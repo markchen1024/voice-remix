@@ -2,40 +2,11 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
-
-type SectionKind = "intro" | "verse" | "break" | "chorus" | "outro";
-type TrackId = "drums" | "percussion" | "bass" | "synth" | "fx";
-
-type Section = {
-  id: string;
-  kind: SectionKind;
-  label: string;
-  startBar: number;
-  lengthBars: number;
-  energy: number;
-};
-
-type Track = {
-  id: TrackId;
-  label: string;
-  role: string;
-  color: string;
-  enabled: boolean;
-  level: number;
-  audioUrl: string;
-  peaksUrl: string;
-  meanDb: number;
-  maxDb: number;
-  nearSilent?: boolean;
-};
-
-type Project = {
-  bpm: number;
-  sections: Section[];
-  tracks: Track[];
-};
+import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
 
 const INITIAL_PROJECT: Project = {
+  version: 1,
+  totalBars: 59,
   bpm: 118,
   sections: [
     { id: "intro-1", kind: "intro", label: "Intro", startBar: 0, lengthBars: 4, energy: 0.28 },
@@ -60,10 +31,6 @@ const INITIAL_PROJECT: Project = {
 const BAR_PX = 58;
 const TOTAL_BARS = 59;
 const AUDIO_DURATION = 119.4;
-
-function cloneProject(project: Project): Project {
-  return JSON.parse(JSON.stringify(project)) as Project;
-}
 
 function sectionAt(project: Project, bar: number) {
   return [...project.sections]
@@ -123,6 +90,7 @@ export function VoiceRemixStudio() {
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [command, setCommand] = useState("");
+  const [proposal, setProposal] = useState<EditTransaction | null>(null);
   const [listening, setListening] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
@@ -138,7 +106,10 @@ export function VoiceRemixStudio() {
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
     project.tracks.forEach((track) => {
       const player = players.current[track.id];
-      if (player) player.mute = !track.enabled;
+      if (player) {
+        player.mute = !track.enabled;
+        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
+      }
     });
   }, [project]);
 
@@ -194,6 +165,7 @@ export function VoiceRemixStudio() {
 
   const commit = (next: Project, title: string, detail: string) => {
     history.current.push(cloneProject(projectRef.current));
+    if (next.version === projectRef.current.version) next.version += 1;
     setCanUndo(true);
     setProject(next);
     setActivity((items) => [{ title, detail, time: "NOW" }, ...items].slice(0, 5));
@@ -230,54 +202,37 @@ export function VoiceRemixStudio() {
       setCommand("");
       return;
     }
-    const next = cloneProject(project);
-    const operations: string[] = [];
-    const bpmMatch = input.match(/(?:bpm|速度|tempo)[^0-9]*(\d{2,3})/i) ?? input.match(/(\d{2,3})\s*(?:bpm)/i);
-    if (bpmMatch) {
-      next.bpm = Math.max(60, Math.min(180, Number(bpmMatch[1])));
-      operations.push(`Tempo → ${next.bpm} BPM`);
-    }
-    if (/副歌|chorus/i.test(input) && /提前|earlier|前移/i.test(input)) {
-      const bars = Number(input.match(/(\d+)\s*(?:小节|bars?)/i)?.[1] ?? 4);
-      const chorus = next.sections.find((section) => section.kind === "chorus")!;
-      chorus.startBar = Math.max(0, chorus.startBar - bars);
-      operations.push(`Chorus −${bars} bars`);
-    }
-    const trackMap: Array<[RegExp, TrackId]> = [
-      [/鼓|drums?/i, "drums"],
-      [/打击乐|percussion/i, "percussion"],
-      [/贝斯|bass/i, "bass"],
-      [/合成器|和弦|主旋律|synth|chords?|lead/i, "synth"],
-      [/效果|氛围|fx|effects?/i, "fx"],
-    ];
-    if (/只保留|only keep/i.test(input)) {
-      const wanted = trackMap.filter(([pattern]) => pattern.test(input)).map(([, id]) => id);
-      next.tracks.forEach((track) => { track.enabled = wanted.includes(track.id); });
-      if (wanted.length) operations.push(`Solo → ${wanted.map((id) => id.toUpperCase()).join(" + ")}`);
-    } else {
-      trackMap.forEach(([pattern, id]) => {
-        if (!pattern.test(input)) return;
-        const track = next.tracks.find((item) => item.id === id)!;
-        if (/静音|移除|关掉|mute|remove/i.test(input)) {
-          track.enabled = false;
-          operations.push(`${track.label} muted`);
-        } else if (/打开|恢复|加入|unmute|enable|add/i.test(input)) {
-          track.enabled = true;
-          operations.push(`${track.label} enabled`);
-        }
-      });
-    }
-    if (/更有力量|能量|更强|harder|energy/i.test(input)) {
-      const chorus = next.sections.find((section) => section.kind === "chorus")!;
-      chorus.energy = 1;
-      operations.push("Chorus energy → 100%");
-    }
-    if (!operations.length) {
+    const nextProposal = createLocalTransaction(input, project);
+    if (!nextProposal) {
       setActivity((items) => [{ title: "Needs clarification", detail: `“${input}” is outside the local command set`, time: "NOW" }, ...items].slice(0, 5));
     } else {
-      commit(next, "Local edit plan applied", operations.join(" · "));
+      setProposal(nextProposal);
+      setActivity((items) => [{ title: "Music Diff ready", detail: `${nextProposal.operations.length} proposed operations · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
     setCommand("");
+  };
+
+  const toggleProposalOperation = (operationId: string) => {
+    setProposal((current) => current ? { ...current, operations: current.operations.map((operation) => operation.id === operationId ? { ...operation, selected: !operation.selected } : operation) } : null);
+  };
+
+  const discardProposal = () => {
+    if (!proposal) return;
+    setActivity((items) => [{ title: "Proposal discarded", detail: "No project state was changed", time: "NOW" }, ...items].slice(0, 5));
+    setProposal(null);
+  };
+
+  const applyProposal = () => {
+    if (!proposal || proposal.baseProjectVersion !== project.version) {
+      setActivity((items) => [{ title: "Stale proposal", detail: "The project changed; create a fresh Music Diff", time: "NOW" }, ...items].slice(0, 5));
+      setProposal(null);
+      return;
+    }
+    const selectedOperations = proposal.operations.filter((operation) => operation.selected);
+    if (!selectedOperations.length) return;
+    const next = applyOperations(project, proposal.operations, true);
+    commit(next, "Music Diff committed", selectedOperations.map((operation) => `${describeOperation(operation).verb} ${operation.targetLabel}`).join(" · "));
+    setProposal(null);
   };
 
   const startListening = () => {
@@ -305,6 +260,9 @@ export function VoiceRemixStudio() {
   const selected = project.sections.find((section) => section.id === selectedSection)!;
   const active = sectionAt(project, Math.floor(position));
   const barLabels = useMemo(() => Array.from({ length: TOTAL_BARS }, (_, index) => index + 1), []);
+  const selectedProposalOperations = proposal?.operations.filter((operation) => operation.selected) ?? [];
+  const proposedMoves = selectedProposalOperations.filter((operation): operation is MoveSectionOperation => operation.action === "move_section");
+  const affectedSectionIds = new Set(proposedMoves.map((operation) => operation.targetId));
 
   return (
     <main className="app-shell">
@@ -345,15 +303,43 @@ export function VoiceRemixStudio() {
             <form className="prompt-box" onSubmit={runCommand}>
               <button type="button" className={`voice-button ${listening ? "listening" : ""}`} onClick={startListening} aria-label="Start voice input">●</button>
               <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Try “bring the chorus in earlier and make the drums hit harder”" aria-label="Arrangement command" />
-              <button className="apply-button" type="submit"><span>Apply edit</span> ↑</button>
+              <button className="apply-button" type="submit"><span>Preview edit</span> ↑</button>
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
-                {["副歌提前 4 小节", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
+                {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
-              <small>{listening ? "Listening…" : "Local demo · GPT-5.6 next"}</small>
+              <small>{listening ? "Listening…" : "Transaction preview · GPT-5.6 next"}</small>
             </div>
           </section>
+
+          {proposal && (
+            <section className="music-diff" aria-label="Proposed music edit">
+              <div className="diff-heading">
+                <div><span className="overline">MUSIC DIFF · PROJECT UNCHANGED</span><h2>{proposal.summary}</h2><p>Review every operation before it touches the arrangement.</p></div>
+                <div className="diff-count"><strong>{selectedProposalOperations.length}</strong><span>of {proposal.operations.length} selected</span></div>
+              </div>
+              {proposal.protectedTargets.length > 0 && <div className="protected-row"><span>◇ PROTECTED</span>{proposal.protectedTargets.map((target) => <strong key={target}>{target}</strong>)}<small>will remain unchanged</small></div>}
+              <div className="diff-operations">
+                {proposal.operations.map((operation) => {
+                  const description = describeOperation(operation);
+                  return (
+                    <label className={`diff-operation ${operation.selected ? "selected" : ""}`} key={operation.id}>
+                      <input type="checkbox" checked={operation.selected} onChange={() => toggleProposalOperation(operation.id)} />
+                      <span className="diff-check">{operation.selected ? "✓" : ""}</span>
+                      <span className="diff-verb">{description.verb}</span>
+                      <span className="diff-target"><strong>{description.target}</strong><small>{operation.explanation}</small></span>
+                      <span className="diff-values"><del>{description.before}</del><i>→</i><strong>{description.after}</strong></span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="diff-footer">
+                <div>{proposal.assumptions.map((assumption) => <span key={assumption}>Assumption · {assumption}</span>)}</div>
+                <div><button type="button" onClick={discardProposal}>Discard</button><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
+              </div>
+            </section>
+          )}
 
           <section className="song-card">
             <div className="cover-art"><div className="cover-orbit one" /><div className="cover-orbit two" /><i>VR</i></div>
@@ -391,10 +377,11 @@ export function VoiceRemixStudio() {
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
                       <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} nearSilent={track.nearSilent} />
                       {project.sections.map((section) => (
-                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
+                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""} ${affectedSectionIds.has(section.id) ? "is-affected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
                           <span>{section.label}</span>
                         </button>
                       ))}
+                      {proposedMoves.map((move) => <div className="ghost-clip" key={`${track.id}-${move.id}-ghost`} style={{ left: move.afterStartBar * BAR_PX + 3, width: move.lengthBars * BAR_PX - 6 }}><span>PROPOSED · {move.targetLabel}</span></div>)}
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
                     </div>
                   </div>
