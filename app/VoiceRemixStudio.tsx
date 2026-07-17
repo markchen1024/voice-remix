@@ -23,7 +23,10 @@ type Track = {
   enabled: boolean;
   level: number;
   audioUrl: string;
-  waveformUrl: string;
+  peaksUrl: string;
+  meanDb: number;
+  maxDb: number;
+  nearSilent?: boolean;
 };
 
 type Project = {
@@ -46,11 +49,11 @@ const INITIAL_PROJECT: Project = {
     { id: "outro-1", kind: "outro", label: "Outro", startBar: 53, lengthBars: 6, energy: 0.38 },
   ],
   tracks: [
-    { id: "drums", label: "DRUMS", role: "Suno stem · WAV", color: "#ff7a5c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/drums.mp3", waveformUrl: "/audio/neon-pulse-loop/drums-waveform.png" },
-    { id: "percussion", label: "PERCUSSION", role: "Suno stem · WAV", color: "#f5c84c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/percussion.mp3", waveformUrl: "/audio/neon-pulse-loop/percussion-waveform.png" },
-    { id: "bass", label: "BASS", role: "Suno stem · WAV + MIDI", color: "#9d83ff", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/bass.mp3", waveformUrl: "/audio/neon-pulse-loop/bass-waveform.png" },
-    { id: "synth", label: "SYNTH", role: "Suno stem · WAV + MIDI", color: "#4ed6a7", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/synth.mp3", waveformUrl: "/audio/neon-pulse-loop/synth-waveform.png" },
-    { id: "fx", label: "FX", role: "Suno stem · WAV", color: "#f06eb6", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/fx.mp3", waveformUrl: "/audio/neon-pulse-loop/fx-waveform.png" },
+    { id: "drums", label: "DRUMS", role: "Suno stem · WAV", color: "#ff7a5c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/drums.mp3", peaksUrl: "/audio/neon-pulse-loop/drums-peaks.json", meanDb: -21.6, maxDb: -4.1 },
+    { id: "percussion", label: "PERCUSSION", role: "Suno stem · WAV", color: "#f5c84c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/percussion.mp3", peaksUrl: "/audio/neon-pulse-loop/percussion-peaks.json", meanDb: -37.3, maxDb: -2.8 },
+    { id: "bass", label: "BASS", role: "Suno stem · WAV + MIDI", color: "#9d83ff", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/bass.mp3", peaksUrl: "/audio/neon-pulse-loop/bass-peaks.json", meanDb: -20.5, maxDb: -7 },
+    { id: "synth", label: "SYNTH", role: "Suno stem · WAV + MIDI", color: "#4ed6a7", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/synth.mp3", peaksUrl: "/audio/neon-pulse-loop/synth-peaks.json", meanDb: -25.6, maxDb: -4.9 },
+    { id: "fx", label: "FX", role: "Suno stem · WAV", color: "#f06eb6", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/fx.mp3", peaksUrl: "/audio/neon-pulse-loop/fx-peaks.json", meanDb: -106.2, maxDb: -54.9, nearSilent: true },
   ],
 };
 
@@ -66,6 +69,52 @@ function sectionAt(project: Project, bar: number) {
   return [...project.sections]
     .reverse()
     .find((section) => bar >= section.startBar && bar < section.startBar + section.lengthBars);
+}
+
+type PeakEnvelope = {
+  peaks: Array<[number, number]>;
+};
+
+function TrackWaveform({ url, color, width, nearSilent = false }: { url: string; color: string; width: number; nearSilent?: boolean }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    fetch(url)
+      .then((response) => response.json() as Promise<PeakEnvelope>)
+      .then((data) => {
+        if (cancelled) return;
+        const height = 54;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        canvas.width = width;
+        canvas.height = height;
+        context.clearRect(0, 0, width, height);
+        context.strokeStyle = color;
+        context.lineWidth = 1;
+        context.globalAlpha = nearSilent ? 0.32 : 0.86;
+        const center = height / 2;
+        const visualScale = (value: number) => Math.sign(value) * Math.log1p(Math.abs(value) * 20) / Math.log(21);
+
+        context.beginPath();
+        for (let x = 0; x < width; x += 1) {
+          const peak = data.peaks[Math.min(data.peaks.length - 1, Math.floor(x / width * data.peaks.length))];
+          const top = center - visualScale(peak[1]) * center * 0.88;
+          const bottom = center - visualScale(peak[0]) * center * 0.88;
+          context.moveTo(x + 0.5, top);
+          context.lineTo(x + 0.5, Math.max(top + 1, bottom));
+        }
+        context.stroke();
+      })
+      .catch(() => undefined);
+
+    return () => { cancelled = true; };
+  }, [color, nearSilent, url, width]);
+
+  return <canvas ref={canvasRef} className="track-waveform" aria-hidden="true" />;
 }
 
 export function VoiceRemixStudio() {
@@ -335,13 +384,14 @@ export function VoiceRemixStudio() {
                   <div className={`track-row ${track.enabled ? "" : "is-muted"}`} key={track.id}>
                     <div className="track-header">
                       <span className="track-color" style={{ background: track.color }} />
-                      <div><strong>{track.label}</strong><small>{track.role}</small></div>
+                      <div><strong>{track.label}</strong><small className={track.nearSilent ? "near-silent" : ""}>{track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
                       <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`}>{track.enabled ? "M" : "○"}</button>
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
+                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} nearSilent={track.nearSilent} />
                       {project.sections.map((section) => (
-                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color, "--waveform": `url(${track.waveformUrl})`, "--wave-x": `${-section.startBar * BAR_PX}px`, "--timeline-width": `${TOTAL_BARS * BAR_PX}px` } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
+                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
                           <span>{section.label}</span>
                         </button>
                       ))}

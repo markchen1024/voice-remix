@@ -10,4 +10,4 @@ Imported from Suno Auto Split for the Voice Remix demo.
 - Tracks: drums, percussion, bass, synth, FX
 - MIDI: drums, percussion, bass, synth
 
-The original lossless WAV files remain outside the web bundle. Generated waveform PNGs are used by the visual editor.
+The original lossless WAV files remain outside the web bundle. Per-pixel min/max peak envelopes are generated from the original WAV samples and rendered by the editor on Canvas.
