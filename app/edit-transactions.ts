@@ -76,6 +76,7 @@ export type EditOperation = MoveSectionOperation | SetTrackEnabledOperation | Se
 export type EditTransaction = {
   id: string;
   baseProjectVersion: number;
+  planner: "gpt-5.6-sol" | "local";
   request: string;
   summary: string;
   assumptions: string[];
@@ -188,6 +189,7 @@ export function createLocalTransaction(input: string, project: Project): EditTra
   return {
     id: `tx-${Date.now()}`,
     baseProjectVersion: project.version,
+    planner: "local",
     request: input,
     summary: `Proposed ${operations.length} edit${operations.length === 1 ? "" : "s"}: ${actionLabels.join(", ")}`,
     assumptions,

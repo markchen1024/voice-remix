@@ -91,6 +91,7 @@ export function VoiceRemixStudio() {
   const [position, setPosition] = useState(0);
   const [command, setCommand] = useState("");
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
+  const [planning, setPlanning] = useState(false);
   const [listening, setListening] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
@@ -193,22 +194,31 @@ export function VoiceRemixStudio() {
     commit(next, `Moved ${section.label}`, `${delta > 0 ? "+" : ""}${delta} bar${Math.abs(delta) === 1 ? "" : "s"}`);
   };
 
-  const runCommand = (event: FormEvent) => {
+  const runCommand = async (event: FormEvent) => {
     event.preventDefault();
     const input = command.trim();
-    if (!input) return;
+    if (!input || planning) return;
     if (/撤销|undo/i.test(input)) {
       undo();
       setCommand("");
       return;
     }
-    const nextProposal = createLocalTransaction(input, project);
+    setPlanning(true);
+    let nextProposal: EditTransaction | null = null;
+    try {
+      const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project }) });
+      if (response.ok) nextProposal = ((await response.json()) as { transaction: EditTransaction }).transaction;
+    } catch {
+      // The local planner keeps the demo usable offline and when the API is unavailable.
+    }
+    nextProposal ??= createLocalTransaction(input, project);
     if (!nextProposal) {
-      setActivity((items) => [{ title: "Needs clarification", detail: `“${input}” is outside the local command set`, time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: "Needs clarification", detail: `“${input}” did not produce a supported edit`, time: "NOW" }, ...items].slice(0, 5));
     } else {
       setProposal(nextProposal);
-      setActivity((items) => [{ title: "Music Diff ready", detail: `${nextProposal.operations.length} proposed operations · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: "Music Diff ready", detail: `${nextProposal.operations.length} operations · ${nextProposal.planner} · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
+    setPlanning(false);
     setCommand("");
   };
 
@@ -302,21 +312,21 @@ export function VoiceRemixStudio() {
             <p>Describe the feeling, structure, or instrument you want to hear.</p>
             <form className="prompt-box" onSubmit={runCommand}>
               <button type="button" className={`voice-button ${listening ? "listening" : ""}`} onClick={startListening} aria-label="Start voice input">●</button>
-              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Try “bring the chorus in earlier and make the drums hit harder”" aria-label="Arrangement command" />
-              <button className="apply-button" type="submit"><span>Preview edit</span> ↑</button>
+              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Try “bring the chorus in earlier and make the drums hit harder”" aria-label="Arrangement command" disabled={planning} />
+              <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning}><span>{planning ? "Planning…" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
                 {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
-              <small>{listening ? "Listening…" : "Transaction preview · GPT-5.6 next"}</small>
+              <small>{listening ? "Listening…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "GPT-5.6 planner · local fallback"}</small>
             </div>
           </section>
 
           {proposal && (
             <section className="music-diff" aria-label="Proposed music edit">
               <div className="diff-heading">
-                <div><span className="overline">MUSIC DIFF · PROJECT UNCHANGED</span><h2>{proposal.summary}</h2><p>Review every operation before it touches the arrangement.</p></div>
+                <div><span className="overline">MUSIC DIFF · {proposal.planner.toUpperCase()} · PROJECT UNCHANGED</span><h2>{proposal.summary}</h2><p>Review every operation before it touches the arrangement.</p></div>
                 <div className="diff-count"><strong>{selectedProposalOperations.length}</strong><span>of {proposal.operations.length} selected</span></div>
               </div>
               {proposal.protectedTargets.length > 0 && <div className="protected-row"><span>◇ PROTECTED</span>{proposal.protectedTargets.map((target) => <strong key={target}>{target}</strong>)}<small>will remain unchanged</small></div>}

@@ -4,18 +4,20 @@ Voice Remix is a voice-first visual music arranger for OpenAI Build Week. It com
 
 ## Current milestone
 
-The first local studio includes:
+The current studio includes:
 
-- an original four-section, four-track arrangement
-- Tone.js synthesis and synchronized transport
+- five imported Suno stems with source-accurate waveform envelopes
+- Tone.js synchronized multitrack playback
 - colored clip timeline and moving playhead
 - play, pause, restart, BPM and track mute controls
 - section selection, energy control and bar nudging
-- Chinese/English local command parsing
+- GPT-5.6 Sol planning through the Responses API and Structured Outputs
+- inspectable Music Diff transactions with protected tracks and Ghost Preview
+- Chinese/English local planner fallback when the API is unavailable
 - browser speech-input prototype
 - transaction history and Undo
 
-GPT-5.6 planning and OpenAI Realtime transcription are the next milestone. The local parser keeps the UI and audio engine testable before API integration.
+OpenAI Realtime transcription and actual audio-region rendering are the next milestones.
 
 ## Run locally
 
@@ -23,6 +25,11 @@ Requires Node.js 22.13 or newer.
 
 ```bash
 npm ci
+```
+
+Copy `.env.example` to `.env.local` and add an OpenAI API key to enable GPT-5.6 planning. Without a key, the deterministic local planner remains available.
+
+```bash
 npm run dev
 ```
 
@@ -34,10 +41,9 @@ npm test
 
 ## Demo commands
 
-- `副歌提前 4 小节`
-- `鼓更有力量`
+- `最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变`
 - `静音主旋律`
-- `速度调到 126 BPM`
+- `只保留贝斯和鼓`
 - `undo`
 
 ## Product and architecture
@@ -48,5 +54,4 @@ npm test
 
 ## Build Week direction
 
-Voice Remix targets **Apps for your life**. GPT-5.6 will turn contextual, compound music requests into validated edit transactions; Codex is used to build and document the complete application.
-
+Voice Remix targets **Apps for your life**. GPT-5.6 turns contextual, compound music requests into validated edit transactions; Codex is used throughout product research, architecture, implementation, testing, and documentation.

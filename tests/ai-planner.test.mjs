@@ -1,0 +1,44 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { normalizeMusicEditPlan } from "../app/ai-planner.ts";
+
+const track = (id, label) => ({ id, label, role: "test", color: "#fff", enabled: true, level: 1, audioUrl: "", peaksUrl: "", meanDb: -20, maxDb: -3 });
+const project = {
+  version: 4,
+  totalBars: 59,
+  bpm: 118,
+  sections: [{ id: "chorus-2", kind: "chorus", label: "Final Chorus", startBar: 44, lengthBars: 9, energy: 0.9 }],
+  tracks: [track("drums", "DRUMS"), track("percussion", "PERCUSSION"), track("bass", "BASS"), track("synth", "SYNTH"), track("fx", "FX")],
+};
+
+test("AI plans are normalized against the real project and protected tracks", () => {
+  const transaction = normalizeMusicEditPlan("move it earlier", project, {
+    summary: "Move the ending and strengthen the drums",
+    assumptions: [],
+    protectedTargets: ["bass"],
+    operations: [
+      { action: "move_section", targetId: "chorus-2", barsEarlier: 4, explanation: "Earlier payoff" },
+      { action: "set_track_gain", targetId: "drums", gainDelta: 0.2, explanation: "More impact" },
+      { action: "set_track_gain", targetId: "bass", gainDelta: 0.2, explanation: "Must be ignored" },
+      { action: "set_section_energy", targetId: "invented", energy: 1, explanation: "Must be ignored" },
+    ],
+  });
+
+  assert.ok(transaction);
+  assert.equal(transaction.planner, "gpt-5.6-sol");
+  assert.equal(transaction.operations.length, 2);
+  assert.equal(transaction.operations[0].afterStartBar, 40);
+  assert.equal(transaction.operations[1].afterLevel, 1.2);
+  assert.deepEqual(transaction.protectedTargets, ["BASS"]);
+  assert.equal(project.sections[0].startBar, 44);
+});
+
+test("AI plans with no valid project targets are rejected", () => {
+  const transaction = normalizeMusicEditPlan("move it", project, {
+    summary: "Invalid",
+    assumptions: [],
+    protectedTargets: [],
+    operations: [{ action: "move_section", targetId: "missing", barsEarlier: 2, explanation: "Unknown section" }],
+  });
+  assert.equal(transaction, null);
+});

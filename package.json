@@ -9,16 +9,18 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/edit-transactions.test.mjs tests/rendered-html.test.mjs tests/waveform-peaks.test.mjs",
+    "test": "npm run build && node --test tests/ai-planner.test.mjs tests/edit-transactions.test.mjs tests/rendered-html.test.mjs tests/waveform-peaks.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "openai": "^6.48.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "tone": "^15.1.22"
+    "tone": "^15.1.22",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.37.1",
