@@ -21,7 +21,9 @@ test("server-renders the Voice Remix studio shell", async () => {
   const html = await response.text();
   assert.match(html, /<title>Voice Remix/);
   assert.match(html, /Voice Remix/);
-  assert.match(html, /Midnight Circuit/);
+  assert.match(html, /Neon Pulse Loop/);
+  assert.match(html, /5 Suno stems/);
+  assert.match(html, /59<!-- --> bars/);
   assert.match(html, /What should change\?/);
   assert.match(html, /VISUAL EDITOR/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);

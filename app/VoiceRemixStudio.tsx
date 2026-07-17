@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
 
-type SectionKind = "intro" | "verse" | "chorus" | "outro";
-type TrackId = "drums" | "bass" | "chords" | "lead";
+type SectionKind = "intro" | "verse" | "break" | "chorus" | "outro";
+type TrackId = "drums" | "percussion" | "bass" | "synth" | "fx";
 
 type Section = {
   id: string;
@@ -22,6 +22,8 @@ type Track = {
   color: string;
   enabled: boolean;
   level: number;
+  audioUrl: string;
+  waveformUrl: string;
 };
 
 type Project = {
@@ -35,19 +37,26 @@ const INITIAL_PROJECT: Project = {
   sections: [
     { id: "intro-1", kind: "intro", label: "Intro", startBar: 0, lengthBars: 4, energy: 0.28 },
     { id: "verse-1", kind: "verse", label: "Verse", startBar: 4, lengthBars: 8, energy: 0.5 },
-    { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 12, lengthBars: 8, energy: 0.82 },
-    { id: "outro-1", kind: "outro", label: "Outro", startBar: 20, lengthBars: 4, energy: 0.38 },
+    { id: "break-1", kind: "break", label: "Break", startBar: 12, lengthBars: 4, energy: 0.3 },
+    { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 16, lengthBars: 12, energy: 0.82 },
+    { id: "break-2", kind: "break", label: "Break 2", startBar: 28, lengthBars: 2, energy: 0.26 },
+    { id: "verse-2", kind: "verse", label: "Verse 2", startBar: 30, lengthBars: 7, energy: 0.56 },
+    { id: "build-1", kind: "verse", label: "Build", startBar: 37, lengthBars: 7, energy: 0.72 },
+    { id: "chorus-2", kind: "chorus", label: "Final Chorus", startBar: 44, lengthBars: 9, energy: 0.94 },
+    { id: "outro-1", kind: "outro", label: "Outro", startBar: 53, lengthBars: 6, energy: 0.38 },
   ],
   tracks: [
-    { id: "drums", label: "DRUMS", role: "Rhythm rack", color: "#ff7a5c", enabled: true, level: 0.78 },
-    { id: "bass", label: "BASS", role: "Mono pulse", color: "#9d83ff", enabled: true, level: 0.64 },
-    { id: "chords", label: "CHORDS", role: "Glass keys", color: "#4ed6a7", enabled: true, level: 0.58 },
-    { id: "lead", label: "LEAD", role: "Neon pluck", color: "#f5c84c", enabled: true, level: 0.52 },
+    { id: "drums", label: "DRUMS", role: "Suno stem · WAV", color: "#ff7a5c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/drums.mp3", waveformUrl: "/audio/neon-pulse-loop/drums-waveform.png" },
+    { id: "percussion", label: "PERCUSSION", role: "Suno stem · WAV", color: "#f5c84c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/percussion.mp3", waveformUrl: "/audio/neon-pulse-loop/percussion-waveform.png" },
+    { id: "bass", label: "BASS", role: "Suno stem · WAV + MIDI", color: "#9d83ff", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/bass.mp3", waveformUrl: "/audio/neon-pulse-loop/bass-waveform.png" },
+    { id: "synth", label: "SYNTH", role: "Suno stem · WAV + MIDI", color: "#4ed6a7", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/synth.mp3", waveformUrl: "/audio/neon-pulse-loop/synth-waveform.png" },
+    { id: "fx", label: "FX", role: "Suno stem · WAV", color: "#f06eb6", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/fx.mp3", waveformUrl: "/audio/neon-pulse-loop/fx-waveform.png" },
   ],
 };
 
 const BAR_PX = 58;
-const TOTAL_BARS = 24;
+const TOTAL_BARS = 59;
+const AUDIO_DURATION = 119.4;
 
 function cloneProject(project: Project): Project {
   return JSON.parse(JSON.stringify(project)) as Project;
@@ -69,21 +78,19 @@ export function VoiceRemixStudio() {
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
   const [activity, setActivity] = useState([
-    { title: "Project ready", detail: "24 bars · 4 tracks · local arrangement engine", time: "NOW" },
+    { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
   const history = useRef<Project[]>([]);
   const scheduled = useRef(false);
-  const synths = useRef<{
-    kick?: Tone.MembraneSynth;
-    hat?: Tone.NoiseSynth;
-    bass?: Tone.MonoSynth;
-    chords?: Tone.PolySynth;
-    lead?: Tone.Synth;
-  }>({});
+  const players = useRef<Partial<Record<TrackId, Tone.Player>>>({});
 
   useEffect(() => {
     projectRef.current = project;
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
+    project.tracks.forEach((track) => {
+      const player = players.current[track.id];
+      if (player) player.mute = !track.enabled;
+    });
   }, [project]);
 
   useEffect(() => {
@@ -100,83 +107,25 @@ export function VoiceRemixStudio() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const setupAudio = () => {
-    if (scheduled.current) return;
-    const kick = new Tone.MembraneSynth({
-      pitchDecay: 0.02,
-      octaves: 5,
-      envelope: { attack: 0.001, decay: 0.18, sustain: 0, release: 0.08 },
-    }).toDestination();
-    const hat = new Tone.NoiseSynth({
-      noise: { type: "white" },
-      envelope: { attack: 0.001, decay: 0.035, sustain: 0 },
-    }).toDestination();
-    const bass = new Tone.MonoSynth({
-      oscillator: { type: "square" },
-      filter: { Q: 2, type: "lowpass", rolloff: -24 },
-      envelope: { attack: 0.01, decay: 0.12, sustain: 0.35, release: 0.18 },
-      filterEnvelope: { attack: 0.01, decay: 0.16, sustain: 0.2, release: 0.2, baseFrequency: 90, octaves: 2.8 },
-    }).toDestination();
-    const chords = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.03, decay: 0.22, sustain: 0.2, release: 0.5 },
-    }).toDestination();
-    const lead = new Tone.Synth({
-      oscillator: { type: "sine" },
-      envelope: { attack: 0.004, decay: 0.08, sustain: 0.08, release: 0.16 },
-    }).toDestination();
-    kick.volume.value = -7;
-    hat.volume.value = -18;
-    bass.volume.value = -14;
-    chords.volume.value = -17;
-    lead.volume.value = -15;
-    synths.current = { kick, hat, bass, chords, lead };
-
-    let step = 0;
-    const bassNotes = ["C2", "C2", "Ab1", "Bb1"];
-    const chordNotes = [
-      ["C3", "Eb3", "G3"],
-      ["Ab2", "C3", "Eb3"],
-      ["Eb3", "G3", "Bb3"],
-      ["Bb2", "D3", "F3"],
-    ];
-    const leadNotes = ["G4", "Bb4", "C5", "Eb5", "C5", "Bb4", "G4", "F4"];
-
-    Tone.getTransport().scheduleRepeat((time) => {
-      const current = projectRef.current;
-      const bar = Math.floor(step / 16) % TOTAL_BARS;
-      const beatStep = step % 16;
-      const activeSection = sectionAt(current, bar);
-      const energy = activeSection?.energy ?? 0.4;
-      const isOn = (id: TrackId) => current.tracks.find((track) => track.id === id)?.enabled;
-
-      if (isOn("drums")) {
-        if (beatStep === 0 || beatStep === 8 || (energy > 0.72 && beatStep === 10)) {
-          kick.triggerAttackRelease("C1", "16n", time, 0.65 + energy * 0.25);
-        }
-        if (beatStep % (energy > 0.7 ? 2 : 4) === 0) {
-          hat.triggerAttackRelease("32n", time, 0.22 + energy * 0.18);
-        }
-      }
-      if (isOn("bass") && beatStep % 4 === 0) {
-        bass.triggerAttackRelease(bassNotes[bar % bassNotes.length], "8n", time, 0.55);
-      }
-      if (isOn("chords") && beatStep === 0) {
-        chords.triggerAttackRelease(chordNotes[bar % chordNotes.length], "2n", time, 0.34);
-      }
-      if (isOn("lead") && activeSection?.kind === "chorus" && beatStep % 2 === 0) {
-        lead.triggerAttackRelease(leadNotes[(bar * 2 + beatStep / 2) % leadNotes.length], "16n", time, 0.38);
-      }
-      step = (step + 1) % (TOTAL_BARS * 16);
-    }, "16n");
-    Tone.getTransport().loop = true;
-    Tone.getTransport().loopEnd = `${TOTAL_BARS}m`;
-    scheduled.current = true;
+  const setupAudio = async () => {
+    if (!scheduled.current) {
+      INITIAL_PROJECT.tracks.forEach((track) => {
+        const player = new Tone.Player({ url: track.audioUrl, loop: true, loopEnd: AUDIO_DURATION }).toDestination();
+        player.mute = !projectRef.current.tracks.find((item) => item.id === track.id)?.enabled;
+        player.sync().start(0);
+        players.current[track.id] = player;
+      });
+      const transport = Tone.getTransport();
+      transport.loop = true;
+      transport.loopEnd = AUDIO_DURATION;
+      scheduled.current = true;
+    }
+    await Tone.loaded();
   };
 
   const togglePlay = async () => {
     await Tone.start();
-    setupAudio();
+    await setupAudio();
     const transport = Tone.getTransport();
     if (transport.state === "started") {
       transport.pause();
@@ -247,21 +196,28 @@ export function VoiceRemixStudio() {
     }
     const trackMap: Array<[RegExp, TrackId]> = [
       [/鼓|drums?/i, "drums"],
+      [/打击乐|percussion/i, "percussion"],
       [/贝斯|bass/i, "bass"],
-      [/和弦|chords?/i, "chords"],
-      [/主旋律|lead/i, "lead"],
+      [/合成器|和弦|主旋律|synth|chords?|lead/i, "synth"],
+      [/效果|氛围|fx|effects?/i, "fx"],
     ];
-    trackMap.forEach(([pattern, id]) => {
-      if (!pattern.test(input)) return;
-      const track = next.tracks.find((item) => item.id === id)!;
-      if (/静音|移除|关掉|mute|remove/i.test(input)) {
-        track.enabled = false;
-        operations.push(`${track.label} muted`);
-      } else if (/打开|恢复|加入|unmute|enable|add/i.test(input)) {
-        track.enabled = true;
-        operations.push(`${track.label} enabled`);
-      }
-    });
+    if (/只保留|only keep/i.test(input)) {
+      const wanted = trackMap.filter(([pattern]) => pattern.test(input)).map(([, id]) => id);
+      next.tracks.forEach((track) => { track.enabled = wanted.includes(track.id); });
+      if (wanted.length) operations.push(`Solo → ${wanted.map((id) => id.toUpperCase()).join(" + ")}`);
+    } else {
+      trackMap.forEach(([pattern, id]) => {
+        if (!pattern.test(input)) return;
+        const track = next.tracks.find((item) => item.id === id)!;
+        if (/静音|移除|关掉|mute|remove/i.test(input)) {
+          track.enabled = false;
+          operations.push(`${track.label} muted`);
+        } else if (/打开|恢复|加入|unmute|enable|add/i.test(input)) {
+          track.enabled = true;
+          operations.push(`${track.label} enabled`);
+        }
+      });
+    }
     if (/更有力量|能量|更强|harder|energy/i.test(input)) {
       const chorus = next.sections.find((section) => section.kind === "chorus")!;
       chorus.energy = 1;
@@ -312,7 +268,7 @@ export function VoiceRemixStudio() {
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
-          <button className="project-link"><i className="project-art" />Midnight Circuit</button>
+          <button className="project-link"><i className="project-art" />Neon Pulse Loop</button>
           <button className="project-link faded"><i className="add-project">＋</i>New project</button>
         </div>
         <div className="sidebar-bottom">
@@ -323,7 +279,7 @@ export function VoiceRemixStudio() {
 
       <section className="app-main">
         <header className="page-header">
-          <div><span className="breadcrumb">Projects /</span><strong> Midnight Circuit</strong><i className="saved-dot" /> <small>Saved</small></div>
+          <div><span className="breadcrumb">Projects /</span><strong> Neon Pulse Loop</strong><i className="saved-dot" /> <small>Imported</small></div>
           <div className="page-actions">
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
             <button className="soft-button">Share</button>
@@ -344,7 +300,7 @@ export function VoiceRemixStudio() {
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
-                {["副歌提前 4 小节", "鼓更有力量", "静音主旋律", "速度调到 126 BPM"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
+                {["副歌提前 4 小节", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
               <small>{listening ? "Listening…" : "Local demo · GPT-5.6 next"}</small>
             </div>
@@ -354,9 +310,9 @@ export function VoiceRemixStudio() {
             <div className="cover-art"><div className="cover-orbit one" /><div className="cover-orbit two" /><i>VR</i></div>
             <div className="song-info">
               <span className="overline">CURRENT ARRANGEMENT</span>
-              <h2>Midnight Circuit</h2>
+              <h2>Neon Pulse Loop</h2>
               <p>Alt-electronic · Neon pop · Instrumental</p>
-              <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>4 stems</span></div>
+              <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>5 Suno stems</span></div>
             </div>
             <div className="song-wave" aria-hidden="true">
               {Array.from({ length: 54 }, (_, index) => <i key={index} className={index / 54 * TOTAL_BARS < position ? "passed" : ""} style={{ height: `${18 + ((index * 23) % 62)}%` }} />)}
@@ -375,7 +331,7 @@ export function VoiceRemixStudio() {
                 <div className="bar-ruler" style={{ width: TOTAL_BARS * BAR_PX }}>
                   {barLabels.map((bar) => <span key={bar} style={{ width: BAR_PX }}>{bar}</span>)}
                 </div>
-                {project.tracks.map((track, trackIndex) => (
+                {project.tracks.map((track) => (
                   <div className={`track-row ${track.enabled ? "" : "is-muted"}`} key={track.id}>
                     <div className="track-header">
                       <span className="track-color" style={{ background: track.color }} />
@@ -384,10 +340,9 @@ export function VoiceRemixStudio() {
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
-                      {project.sections.map((section, sectionIndex) => (
-                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
-                          <span>{track.label === "DRUMS" ? section.label : `${section.label} ${sectionIndex + 1}`}</span>
-                          <em>{Array.from({ length: Math.min(section.lengthBars * 2, 12) }, (_, index) => <b key={index} style={{ height: `${22 + ((index * 17 + trackIndex * 13) % 58)}%` }} />)}</em>
+                      {project.sections.map((section) => (
+                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color, "--waveform": `url(${track.waveformUrl})`, "--wave-x": `${-section.startBar * BAR_PX}px`, "--timeline-width": `${TOTAL_BARS * BAR_PX}px` } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
+                          <span>{section.label}</span>
                         </button>
                       ))}
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
@@ -412,8 +367,8 @@ export function VoiceRemixStudio() {
         </div>
 
         <footer className="player-bar">
-          <div className="mini-song"><div className="mini-cover" /><div><strong>Midnight Circuit</strong><span>{active?.label ?? "Ready"} · Voice Remix</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={stop} aria-label="Return to start">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button aria-label="Forward">↷</button></div><div className="progress-row"><span>{Math.floor(position / project.bpm * 240 / 60)}:{String(Math.floor(position * 2) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>0:49</span></div></div>
+          <div className="mini-song"><div className="mini-cover" /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={stop} aria-label="Return to start">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button aria-label="Forward">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>
