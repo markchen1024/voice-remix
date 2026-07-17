@@ -413,7 +413,7 @@ export function VoiceRemixStudio() {
 
         <footer className="player-bar">
           <div className="mini-song"><div className="mini-cover" /><div><strong>Midnight Circuit</strong><span>{active?.label ?? "Ready"} · Voice Remix</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={stop}>↶</button><button className="footer-play" onClick={togglePlay}>{playing ? "Ⅱ" : "▶"}</button><button>↷</button></div><div className="progress-row"><span>{Math.floor(position / project.bpm * 240 / 60)}:{String(Math.floor(position * 2) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>0:49</span></div></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={stop} aria-label="Return to start">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button aria-label="Forward">↷</button></div><div className="progress-row"><span>{Math.floor(position / project.bpm * 240 / 60)}:{String(Math.floor(position * 2) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>0:49</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>
