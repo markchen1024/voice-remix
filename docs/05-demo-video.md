@@ -1,0 +1,61 @@
+# Voice Remix — Demo Video Plan
+
+Target length: **2:40–2:50**. The official limit is under three minutes. Record the working product first; add a short architecture/Codex overlay only after the end-to-end story is clear.
+
+Rewrite the voiceover into your own speaking style. The lines below are prompts, not final submission copy.
+
+## Storyboard
+
+| Time | Screen action | Voiceover prompt |
+|---|---|---|
+| 0:00–0:15 | Open on the playing multitrack editor; quickly mute/unmute drums | Generative music can make a song, but revising one precisely is still hard. DAWs give control, but expect production expertise. |
+| 0:15–0:30 | Show the five stems, real waveforms, ruler, and playhead | Voice Remix lets a creator ask for a musical change in ordinary language while keeping visual and manual control. |
+| 0:30–0:47 | Speak or paste `最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变` and click Apply edit | Explain the request in English: move the last chorus four bars earlier, strengthen drums, keep bass unchanged. |
+| 0:47–1:10 | Hold on the Music Diff; point to `GPT-5.6-SOL`, MOVE, GAIN, and protected BASS | GPT-5.6 receives compact project context and returns Structured Output. The server validates every target and rebuilds trusted before/after values. |
+| 1:10–1:28 | Show ghost chorus position; deselect the drum operation | Nothing has changed yet. The creator can inspect the ghost preview and reject one part of a compound request. |
+| 1:28–1:45 | Apply only the chorus move; then Undo and Redo | Selected operations commit atomically, and every committed edit remains reversible. |
+| 1:45–2:02 | Enter `只保留贝斯和鼓`; briefly show the new proposal | A second request demonstrates contextual stem selection. Unsupported or invented model targets never reach the project. |
+| 2:02–2:22 | Cut to the architecture diagram or a tight code/README overlay | The model never receives audio or edits buffers. Deterministic TypeScript owns the project; Tone.js owns synchronized playback. |
+| 2:22–2:38 | Show a compact Git log/commit montage and return to the app | Codex was used throughout research, interface iteration, implementation, tests, and debugging, with incremental Build Week commits. |
+| 2:38–2:48 | End on the studio and tagline | “Say the change. See the diff. Keep control.” |
+
+## Recording setup
+
+- Capture at 1920×1080 or higher, 16:9, with browser zoom set so the Music Diff text is legible.
+- Use a fresh app load and a signed-out/non-sensitive browser profile.
+- Close notifications and hide bookmarks, API consoles, local paths, and account information.
+- Preload the track, then begin screen recording after browser audio has been unlocked by a click.
+- Use headphones to prevent playback leaking into narration or voice recognition.
+- If speaking the edit live is unreliable, paste it and explain that browser speech input is also supported.
+- Keep music under the voiceover; check both on laptop speakers and headphones.
+- Use only the demo track after confirming public playback/video rights under the entrant's Suno plan.
+- Upload the finished video to YouTube as **Public**, not Unlisted, and verify it while signed out.
+
+## Demo rehearsal checkpoints
+
+Before recording, verify:
+
+1. The proposal source reads `GPT-5.6-SOL`.
+2. The featured request creates exactly a chorus move and drum gain operation.
+3. `BASS` is displayed as protected.
+4. The ghost clip appears before Apply.
+5. Deselecting one operation changes what Apply commits.
+6. Undo and Redo both restore the expected timeline state.
+7. The second request produces a readable proposal.
+8. No fallback/error messages are visible in the final take.
+
+## Resilient recording plan
+
+Record the critical live API sequence as a clean continuous take while it is working. If the API later becomes unavailable, reuse that genuine footage rather than presenting the deterministic `LOCAL` fallback as GPT-5.6. The fallback can be mentioned as reliability engineering, but the video must clearly show at least one real GPT-5.6 interaction.
+
+## Final edit checklist
+
+- [ ] Duration is less than 3:00.
+- [ ] The first 15 seconds make the problem understandable without prior context.
+- [ ] Real product interaction occupies most of the video.
+- [ ] GPT-5.6 and Codex usage are both explicitly explained.
+- [ ] Text and cursor remain readable on a laptop screen.
+- [ ] Voiceover is clear and the track is not overpowering it.
+- [ ] No secrets, private information, or unlicensed visuals appear.
+- [ ] YouTube processing has completed at 1080p and the public link works while signed out.
+
