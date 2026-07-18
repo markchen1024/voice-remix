@@ -11,6 +11,7 @@ import { createProjectHistory, recordHistory, redoHistory, undoHistory } from ".
 import { createProjectExport, projectExportFilename } from "./project-export";
 import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeTranscription, type RealtimeTranscriptionClient } from "./realtime-transcription";
+import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -56,10 +57,6 @@ function sectionAt(project: Project, bar: number) {
     .reverse()
     .find((section) => bar >= section.startBar && bar < section.startBar + section.lengthBars);
 }
-
-type PeakEnvelope = {
-  peaks: Array<[number, number]>;
-};
 
 function TrackWaveform({ url, color, width, project, nearSilent = false }: { url: string; color: string; width: number; project: Project; nearSilent?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -108,6 +105,128 @@ function TrackWaveform({ url, color, width, project, nearSilent = false }: { url
   }, [color, nearSilent, project, url, width]);
 
   return <canvas ref={canvasRef} className="track-waveform" aria-hidden="true" />;
+}
+
+const peakEnvelopeCache = new Map<string, Promise<PeakEnvelope>>();
+
+function loadPeakEnvelope(url: string) {
+  const cached = peakEnvelopeCache.get(url);
+  if (cached) return cached;
+  const request = fetch(url).then((response) => {
+    if (!response.ok) throw new Error(`Could not load waveform peaks: ${url}`);
+    return response.json() as Promise<PeakEnvelope>;
+  });
+  peakEnvelopeCache.set(url, request);
+  return request;
+}
+
+function formatOverviewTime(seconds: number) {
+  const wholeSeconds = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
+}
+
+function MasterWaveform({ project, position, auditioning, onScrub }: { project: Project; position: number; auditioning: boolean; onScrub: (bar: number) => void }) {
+  const baseCanvas = useRef<HTMLCanvasElement>(null);
+  const playedCanvas = useRef<HTMLCanvasElement>(null);
+  const [envelopes, setEnvelopes] = useState<PeakBank>({});
+  const progress = Math.max(0, Math.min(100, position / project.totalBars * 100));
+  const waveform = useMemo(() => buildMasterWaveform(project, envelopes, 720), [envelopes, project]);
+  const activeSection = sectionAt(project, position);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(project.tracks.map(async (track) => [track.id, await loadPeakEnvelope(track.peaksUrl)] as const))
+      .then((entries) => {
+        if (!cancelled) setEnvelopes(Object.fromEntries(entries) as PeakBank);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [project.tracks]);
+
+  useEffect(() => {
+    const draw = (canvas: HTMLCanvasElement | null, active: boolean) => {
+      if (!canvas) return;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      const width = canvas.width;
+      const height = canvas.height;
+      const center = height / 2;
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = "rgba(255,255,255,.055)";
+      context.beginPath();
+      context.moveTo(0, center + 0.5);
+      context.lineTo(width, center + 0.5);
+      context.stroke();
+
+      const gradient = context.createLinearGradient(0, 0, width, 0);
+      if (active) {
+        gradient.addColorStop(0, "#8469ff");
+        gradient.addColorStop(0.55, "#b15ed4");
+        gradient.addColorStop(1, "#f16eae");
+      } else {
+        gradient.addColorStop(0, "#555361");
+        gradient.addColorStop(1, "#3c3b47");
+      }
+      context.strokeStyle = gradient;
+      context.lineWidth = 1;
+      context.globalAlpha = active ? 0.96 : 0.78;
+      context.beginPath();
+      const visualScale = (value: number) => Math.sign(value) * Math.log1p(Math.abs(value) * 22) / Math.log(23);
+      waveform.forEach((peak, index) => {
+        const x = index / waveform.length * width;
+        const top = center - visualScale(peak[1]) * center * 0.9;
+        const bottom = center - visualScale(peak[0]) * center * 0.9;
+        context.moveTo(x + 0.5, top);
+        context.lineTo(x + 0.5, Math.max(top + 1, bottom));
+      });
+      context.stroke();
+    };
+    draw(baseCanvas.current, false);
+    draw(playedCanvas.current, true);
+  }, [waveform]);
+
+  const scrubFromClientX = (clientX: number, element: HTMLDivElement) => {
+    const bounds = element.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width));
+    onScrub(ratio * (project.totalBars - 0.001));
+  };
+
+  return (
+    <div
+      className="master-overview"
+      data-waveform-source="stem-peaks"
+      data-project-version={project.version}
+      data-audition-mode={auditioning ? "proposed" : "current"}
+      role="slider"
+      tabIndex={0}
+      aria-label="Master waveform overview"
+      aria-valuemin={0}
+      aria-valuemax={project.totalBars}
+      aria-valuenow={Number(position.toFixed(2))}
+      aria-valuetext={`${activeSection?.label ?? "Arrangement"}, bar ${Math.floor(position) + 1}, ${formatOverviewTime(position / project.totalBars * AUDIO_DURATION)}`}
+      title="Real peak-derived master overview · click or drag to seek"
+      onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromClientX(event.clientX, event.currentTarget); }}
+      onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromClientX(event.clientX, event.currentTarget); }}
+      onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+          event.preventDefault();
+          onScrub(position + (event.key === "ArrowLeft" ? -1 : 1));
+        } else if (event.key === "Home" || event.key === "End") {
+          event.preventDefault();
+          onScrub(event.key === "Home" ? 0 : project.totalBars - 0.001);
+        }
+      }}
+    >
+      <canvas ref={baseCanvas} className="master-waveform-canvas" width="720" height="58" aria-hidden="true" />
+      <canvas ref={playedCanvas} className="master-waveform-canvas played" width="720" height="58" aria-hidden="true" style={{ clipPath: `inset(0 ${100 - progress}% 0 0)` }} />
+      <div className="master-section-markers" aria-hidden="true">
+        {project.sections.map((section) => <span key={section.id} className="master-section-marker" style={{ left: `${section.startBar / project.totalBars * 100}%` }}><i />{section.label}</span>)}
+      </div>
+      <span className="master-playhead" aria-hidden="true" style={{ left: `${progress}%` }} />
+      <span className="master-time" aria-hidden="true">{formatOverviewTime(position / project.totalBars * AUDIO_DURATION)} / 1:59</span>
+    </div>
+  );
 }
 
 export function VoiceRemixStudio() {
@@ -832,9 +951,7 @@ export function VoiceRemixStudio() {
               <p>Alt-electronic · Neon pop · Instrumental</p>
               <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>5 Suno stems</span></div>
             </div>
-            <div className="song-wave" aria-hidden="true">
-              {Array.from({ length: 54 }, (_, index) => <i key={index} className={index / 54 * TOTAL_BARS < position ? "passed" : ""} style={{ height: `${18 + ((index * 23) % 62)}%` }} />)}
-            </div>
+            <MasterWaveform project={audibleProject} position={position} auditioning={auditioningProposal} onScrub={scrubToBar} />
             <button className={`hero-play ${playing ? "playing" : ""}`} onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button>
           </section>
 
