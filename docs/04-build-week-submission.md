@@ -9,14 +9,14 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 
 | Requirement | Status | Next action |
 |---|---|---|
-| Working, non-trivial implementation | Done | Run the final smoke test after deployment |
-| Uses GPT-5.6 | Done | Show the `GPT-5.6-SOL` planner badge in the video |
+| Working, non-trivial implementation | Verified locally | Production build, lint, and 10/10 tests passed on July 18 |
+| Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
-| Repository with setup and sample data | Done locally | Push the latest commits and confirm judge access |
+| Repository with setup and sample data | Done locally; remote blocked | Fix/create the intended GitHub repository, then push the latest commits |
 | Relevant repository license | Needs entrant decision | Add a license before making the repository public |
 | Private repository judge access | Conditional | Invite both official judge addresses if it stays private |
-| Public demo URL | Pending deployment | Deploy, then test in a signed-out window |
+| Public demo URL | Workspace blocked | Sites reports that hosting is not enabled for this workspace; use an enabled workspace or another host |
 | Public YouTube demo under 3 minutes | Pending recording | Follow `docs/05-demo-video.md` |
 | Devpost text description | Entrant action | Use the factual worksheet below, rewritten personally |
 | Team invitations accepted | Entrant action | Confirm every member has accepted before the deadline |
@@ -27,6 +27,19 @@ If the repository remains private, share it with:
 
 - `testing@devpost.com`
 - `build-week-event@openai.com`
+
+## Current verification snapshot
+
+Recorded on July 18, 2026:
+
+- `npm run lint`: passed.
+- `npm test`: production build passed; 10 tests passed and 0 failed.
+- Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
+- Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
+- Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
+- Git push: blocked because that repository is not visible to the currently authenticated GitHub account (`markchencw`).
+
+Resolve the repository owner/name deliberately; do not create a duplicate under the wrong account. After resolving it, push commits `4d22e21` and `965a1c3` (and later commits) before recording the final video.
 
 ## 2. One-minute judge path
 
