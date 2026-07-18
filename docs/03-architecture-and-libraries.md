@@ -106,6 +106,8 @@ Supported operations in the submission are:
 - `set_track_enabled`
 - `set_track_gain`
 - `set_section_energy`
+- `set_section_track_enabled`
+- `set_section_track_gain`
 
 ### Project history
 
@@ -144,6 +146,7 @@ Preview is intentionally non-mutating. Ghost clips are calculated from selected 
 ## 5. Audio and waveform design
 
 - Five shared `ToneAudioBuffer` sources feed section-level `Player` instances on one `Transport`.
+- Each scheduled player carries its section ID, so section-scoped mute and gain changes update the live mixer without reloading buffers or restarting transport.
 - Each section preserves an immutable source-bar position and a mutable destination-bar position.
 - Applying a section move reschedules the matching source region for every stem at the new destination, so the edit is audible without rewriting source files.
 - Mute and gain are derived from canonical track state.

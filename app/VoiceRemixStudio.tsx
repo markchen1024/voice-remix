@@ -6,7 +6,7 @@ import { arrangementSignature, createArrangementSegments, findAuditionStartBar, 
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
 import { routeImmediateEditorCommand, type ImmediateEditorCommand } from "./editor-command-router";
 import { createEditorContext } from "./editor-context";
-import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
+import { applyOperations, cloneProject, createLocalTransaction, describeOperation, sectionTrackState, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
 import { mergeProposalRefinement } from "./proposal-refinement";
@@ -851,7 +851,12 @@ export function VoiceRemixStudio() {
                 </div>
                 {project.tracks.map((track) => {
                   const audibleTrack = audibleProject.tracks.find((item) => item.id === track.id) ?? track;
-                  const auditionChanged = auditioningProposal && (audibleTrack.enabled !== track.enabled || audibleTrack.level !== track.level);
+                  const scopedAuditionChanged = auditioningProposal && renderedSections.some((section) => {
+                    const currentState = sectionTrackState(project, section.id, track.id);
+                    const proposedState = sectionTrackState(audibleProject, section.id, track.id);
+                    return currentState.enabled !== proposedState.enabled || currentState.level !== proposedState.level;
+                  });
+                  const auditionChanged = auditioningProposal && (audibleTrack.enabled !== track.enabled || audibleTrack.level !== track.level || scopedAuditionChanged);
                   return (
                   <div className={`track-row ${audibleTrack.enabled ? "" : "is-muted"} ${auditionChanged ? "is-audition-changed" : ""}`} data-audition-state={auditioningProposal ? (audibleTrack.enabled ? "on" : "muted") : "current"} key={track.id}>
                     <div className="track-header">
@@ -862,11 +867,19 @@ export function VoiceRemixStudio() {
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
                       <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} project={audibleProject} nearSilent={track.nearSilent} />
-                      {renderedSections.map((section) => (
-                        <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""} ${affectedSectionIds.has(section.id) ? "is-affected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
-                          <span>{section.label}</span>
-                        </button>
-                      ))}
+                      {renderedSections.map((section) => {
+                        const state = sectionTrackState(audibleProject, section.id, track.id);
+                        const automation = audibleProject.automation?.find((item) => item.sectionId === section.id && item.trackId === track.id);
+                        const currentState = sectionTrackState(project, section.id, track.id);
+                        const proposedAutomation = auditioningProposal && (currentState.enabled !== state.enabled || currentState.level !== state.level);
+                        const automationLabel = !state.enabled ? "MUTED" : !audibleTrack.enabled && state.enabled ? "ON" : state.level !== audibleTrack.level ? `${Math.round(state.level * 100)}%` : "AUTO";
+                        return (
+                          <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""} ${affectedSectionIds.has(section.id) ? "is-affected" : ""} ${automation ? "has-automation" : ""} ${!state.enabled ? "automation-muted" : ""} ${proposedAutomation ? "automation-proposed" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`${section.label} · ${track.label}${automation ? ` · ${automationLabel}` : ""}`}>
+                            <span>{section.label}</span>
+                            {automation && <span className="automation-badge">{automationLabel}</span>}
+                          </button>
+                        );
+                      })}
                       {!auditioningProposal && proposedSectionChanges.map((section) => <div className="ghost-clip" key={`${track.id}-${section.id}-ghost`} style={{ left: section.startBar * BAR_PX + 3, width: Math.max(BAR_PX / 2, section.lengthBars * BAR_PX - 6) }}><span>PROPOSED · {section.label}</span></div>)}
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
                     </div>

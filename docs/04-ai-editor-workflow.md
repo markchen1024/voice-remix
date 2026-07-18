@@ -56,3 +56,4 @@ The demo edits imported stems and arrangement metadata; it does not claim to syn
 - “播放最后一遍副歌”, “循环这一段”, and “暂停” control the Transport without creating a Music Diff.
 - “鼓再强一点” refines the existing DRUMS gain operation; “就这样” commits it as one undo step.
 - Every Diff operation is audible: move, mute/unmute, gain, and section energy.
+- Section-specific stem edits remain local to their named section and appear directly on the matching timeline clip as `MUTED`, `ON`, or a gain percentage.

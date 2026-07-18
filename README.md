@@ -40,6 +40,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
 - Non-destructive section rescheduling that produces an audible multitrack rearrangement
+- Section-scoped stem mute and gain automation with per-clip `MUTED`, `ON`, and gain badges
 - OpenAI Realtime transcription over browser WebRTC with live transcript deltas
 - Push-to-talk capture with automatic music ducking and request-based transcription fallback
 - GPT-5.6 Sol arrangement planning through the Responses API
