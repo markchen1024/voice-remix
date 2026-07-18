@@ -42,3 +42,14 @@ test("follow-up edits replace matching operations and rebase onto the canonical 
   assert.equal(applyOperations(project, merged.operations).tracks.find((item) => item.id === "drums").level, 1.4);
   assert.deepEqual(merged.protectedTargets, ["BASS"]);
 });
+
+test("section refinements merge independently and rebase scoped values", () => {
+  const first = transaction([{ id: "old", action: "set_section_track_gain", targetId: "drums", targetLabel: "DRUMS · Chorus", sectionId: "chorus", sectionLabel: "Chorus", beforeLevel: 1, afterLevel: 1.2, explanation: "stronger", selected: true }]);
+  const refinement = transaction([{ id: "new", action: "set_section_track_gain", targetId: "drums", targetLabel: "DRUMS · Chorus", sectionId: "chorus", sectionLabel: "Chorus", beforeLevel: 1.2, afterLevel: 1.3, explanation: "stronger again", selected: true }]);
+  const merged = mergeProposalRefinement(project, first, refinement);
+
+  assert.ok(merged);
+  assert.equal(merged.operations.length, 1);
+  assert.equal(merged.operations[0].beforeLevel, 1);
+  assert.equal(merged.operations[0].afterLevel, 1.3);
+});

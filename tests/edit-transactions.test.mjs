@@ -110,3 +110,18 @@ test("section track automation changes one stem in one section without changing 
   assert.deepEqual(sectionTrackState(next, "chorus-1", "drums"), { enabled: true, level: 1 });
   assert.deepEqual(sectionTrackState(next, "chorus-1", "synth"), { enabled: false, level: 1 });
 });
+
+test("local fallback scopes named-section stem commands", () => {
+  const drums = createLocalTransaction("只在最后副歌把鼓提高20%，贝斯不要变", project);
+  assert.ok(drums);
+  assert.equal(drums.operations.length, 1);
+  assert.equal(drums.operations[0].action, "set_section_track_gain");
+  assert.equal(drums.operations[0].sectionId, "chorus-2");
+  assert.equal(drums.operations[0].afterLevel, 1.2);
+
+  const withVerse = { ...project, sections: [{ id: "verse-1", kind: "verse", label: "Verse", startBar: 4, lengthBars: 8, energy: 0.5 }, ...project.sections] };
+  const synth = createLocalTransaction("主歌关闭合成器", withVerse);
+  assert.ok(synth);
+  assert.equal(synth.operations[0].action, "set_section_track_enabled");
+  assert.equal(synth.operations[0].sectionId, "verse-1");
+});

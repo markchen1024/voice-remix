@@ -10,7 +10,7 @@ export type EditorContext = {
     id: string;
     request: string;
     summary: string;
-    operations: Array<{ id: string; action: string; targetId: string; selected: boolean }>;
+    operations: Array<{ id: string; action: string; targetId: string; sectionId?: string; selected: boolean }>;
   } | null;
   history: { canUndo: boolean; canRedo: boolean };
 };
@@ -45,7 +45,7 @@ export function createEditorContext(project: Project, input: EditorContextInput)
       id: proposal.id,
       request: proposal.request,
       summary: proposal.summary,
-      operations: proposal.operations.slice(0, 10).map(({ id, action, targetId, selected }) => ({ id, action, targetId, selected })),
+      operations: proposal.operations.slice(0, 10).map((operation) => ({ id: operation.id, action: operation.action, targetId: operation.targetId, ...( "sectionId" in operation ? { sectionId: operation.sectionId } : {}), selected: operation.selected })),
     } : null,
     history: { canUndo: input.canUndo, canRedo: input.canRedo },
   };
@@ -68,7 +68,7 @@ export function sanitizeEditorContext(project: Project, value: unknown): EditorC
     if (!operation || typeof operation !== "object") return [];
     const item = operation as Record<string, unknown>;
     if (typeof item.id !== "string" || typeof item.action !== "string" || typeof item.targetId !== "string") return [];
-    return [{ id: item.id.slice(0, 100), action: item.action.slice(0, 100), targetId: item.targetId.slice(0, 100), selected: item.selected === true }];
+    return [{ id: item.id.slice(0, 100), action: item.action.slice(0, 100), targetId: item.targetId.slice(0, 100), ...(typeof item.sectionId === "string" ? { sectionId: item.sectionId.slice(0, 100) } : {}), selected: item.selected === true }];
   }) : [];
   const activeProposal = proposalId ? {
     id: proposalId,

@@ -1,7 +1,8 @@
-import type { EditOperation, EditTransaction, Project } from "./edit-transactions";
+import { sectionTrackState, type EditOperation, type EditTransaction, type Project } from "./edit-transactions.ts";
 
 function operationKey(operation: EditOperation) {
-  return `${operation.action}:${operation.targetId}`;
+  const sectionId = "sectionId" in operation ? operation.sectionId : "";
+  return `${operation.action}:${sectionId}:${operation.targetId}`;
 }
 
 function rebaseOperation(project: Project, operation: EditOperation): EditOperation | null {
@@ -14,6 +15,19 @@ function rebaseOperation(project: Project, operation: EditOperation): EditOperat
     const section = project.sections.find((item) => item.id === operation.targetId);
     if (!section || section.energy === operation.afterEnergy) return null;
     return { ...operation, beforeEnergy: section.energy };
+  }
+
+  if (operation.action === "set_section_track_enabled" || operation.action === "set_section_track_gain") {
+    if (!project.sections.some((section) => section.id === operation.sectionId)) return null;
+    const track = project.tracks.find((item) => item.id === operation.targetId);
+    if (!track) return null;
+    const state = sectionTrackState(project, operation.sectionId, operation.targetId);
+    if (operation.action === "set_section_track_enabled") {
+      if (state.enabled === operation.afterEnabled) return null;
+      return { ...operation, beforeEnabled: state.enabled };
+    }
+    if (state.level === operation.afterLevel) return null;
+    return { ...operation, beforeLevel: state.level };
   }
 
   const track = project.tracks.find((item) => item.id === operation.targetId);
@@ -34,7 +48,10 @@ export function mergeProposalRefinement(project: Project, previous: EditTransact
   const protectedTargets = [...new Set([...previous.protectedTargets, ...refinement.protectedTargets])];
   const protectedLabels = new Set(protectedTargets.map((target) => target.toUpperCase()));
   const rebased = [...operations.values()]
-    .filter((operation) => !protectedLabels.has(operation.targetLabel.toUpperCase()))
+    .filter((operation) => {
+      const trackLabel = project.tracks.find((track) => track.id === operation.targetId)?.label.toUpperCase();
+      return !protectedLabels.has(operation.targetLabel.toUpperCase()) && (!trackLabel || !protectedLabels.has(trackLabel));
+    })
     .map((operation) => rebaseOperation(project, operation))
     .filter((operation): operation is EditOperation => operation !== null)
     .map((operation, index) => ({ ...operation, id: `op-${index + 1}` }));

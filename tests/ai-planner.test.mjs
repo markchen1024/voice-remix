@@ -43,3 +43,30 @@ test("AI plans with no valid project targets are rejected", () => {
   });
   assert.equal(transaction, null);
 });
+
+test("AI plans can automate a protected stem in one section without touching other sections", () => {
+  const transaction = normalizeMusicEditPlan("只在最后副歌把鼓提高20%，贝斯不要变", project, {
+    summary: "Stronger final chorus drums",
+    assumptions: [],
+    protectedTargets: ["bass"],
+    operations: [
+      { action: "set_section_track_gain", sectionId: "chorus-2", trackId: "drums", gainDelta: 0.2, explanation: "Raise final chorus drums" },
+      { action: "set_section_track_gain", sectionId: "chorus-2", trackId: "bass", gainDelta: 0.2, explanation: "Must be ignored" },
+    ],
+  });
+
+  assert.ok(transaction);
+  assert.equal(transaction.operations.length, 1);
+  assert.deepEqual(transaction.operations[0], {
+    id: "op-1",
+    action: "set_section_track_gain",
+    targetId: "drums",
+    targetLabel: "DRUMS · Final Chorus",
+    sectionId: "chorus-2",
+    sectionLabel: "Final Chorus",
+    beforeLevel: 1,
+    afterLevel: 1.2,
+    explanation: "Raise final chorus drums",
+    selected: true,
+  });
+});
