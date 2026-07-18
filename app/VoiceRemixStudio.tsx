@@ -400,7 +400,7 @@ export function VoiceRemixStudio() {
                   <div className={`track-row ${track.enabled ? "" : "is-muted"}`} key={track.id}>
                     <div className="track-header">
                       <span className="track-color" style={{ background: track.color }} />
-                      <div><strong>{track.label}</strong><small className={track.nearSilent ? "near-silent" : ""}>{track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
+                      <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={track.nearSilent ? "near-silent" : ""}>{track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
                       <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`}>{track.enabled ? "M" : "○"}</button>
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
