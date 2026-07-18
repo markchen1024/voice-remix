@@ -5,6 +5,7 @@ export type Section = {
   id: string;
   kind: SectionKind;
   label: string;
+  sourceStartBar?: number;
   startBar: number;
   lengthBars: number;
   energy: number;

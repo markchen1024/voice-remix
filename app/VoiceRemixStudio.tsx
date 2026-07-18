@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
+import { arrangementSignature, createArrangementSegments, sourceStartBar } from "./audio-arrangement";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 
@@ -10,15 +11,15 @@ const INITIAL_PROJECT: Project = {
   totalBars: 59,
   bpm: 118,
   sections: [
-    { id: "intro-1", kind: "intro", label: "Intro", startBar: 0, lengthBars: 4, energy: 0.28 },
-    { id: "verse-1", kind: "verse", label: "Verse", startBar: 4, lengthBars: 8, energy: 0.5 },
-    { id: "break-1", kind: "break", label: "Break", startBar: 12, lengthBars: 4, energy: 0.3 },
-    { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 16, lengthBars: 12, energy: 0.82 },
-    { id: "break-2", kind: "break", label: "Break 2", startBar: 28, lengthBars: 2, energy: 0.26 },
-    { id: "verse-2", kind: "verse", label: "Verse 2", startBar: 30, lengthBars: 7, energy: 0.56 },
-    { id: "build-1", kind: "verse", label: "Build", startBar: 37, lengthBars: 7, energy: 0.72 },
-    { id: "chorus-2", kind: "chorus", label: "Final Chorus", startBar: 44, lengthBars: 9, energy: 0.94 },
-    { id: "outro-1", kind: "outro", label: "Outro", startBar: 53, lengthBars: 6, energy: 0.38 },
+    { id: "intro-1", kind: "intro", label: "Intro", sourceStartBar: 0, startBar: 0, lengthBars: 4, energy: 0.28 },
+    { id: "verse-1", kind: "verse", label: "Verse", sourceStartBar: 4, startBar: 4, lengthBars: 8, energy: 0.5 },
+    { id: "break-1", kind: "break", label: "Break", sourceStartBar: 12, startBar: 12, lengthBars: 4, energy: 0.3 },
+    { id: "chorus-1", kind: "chorus", label: "Chorus", sourceStartBar: 16, startBar: 16, lengthBars: 12, energy: 0.82 },
+    { id: "break-2", kind: "break", label: "Break 2", sourceStartBar: 28, startBar: 28, lengthBars: 2, energy: 0.26 },
+    { id: "verse-2", kind: "verse", label: "Verse 2", sourceStartBar: 30, startBar: 30, lengthBars: 7, energy: 0.56 },
+    { id: "build-1", kind: "verse", label: "Build", sourceStartBar: 37, startBar: 37, lengthBars: 7, energy: 0.72 },
+    { id: "chorus-2", kind: "chorus", label: "Final Chorus", sourceStartBar: 44, startBar: 44, lengthBars: 9, energy: 0.94 },
+    { id: "outro-1", kind: "outro", label: "Outro", sourceStartBar: 53, startBar: 53, lengthBars: 6, energy: 0.38 },
   ],
   tracks: [
     { id: "drums", label: "DRUMS", role: "Suno stem · WAV", color: "#ff7a5c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/drums.mp3", peaksUrl: "/audio/neon-pulse-loop/drums-peaks.json", meanDb: -21.6, maxDb: -4.1 },
@@ -43,7 +44,7 @@ type PeakEnvelope = {
   peaks: Array<[number, number]>;
 };
 
-function TrackWaveform({ url, color, width, nearSilent = false }: { url: string; color: string; width: number; nearSilent?: boolean }) {
+function TrackWaveform({ url, color, width, project, nearSilent = false }: { url: string; color: string; width: number; project: Project; nearSilent?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -67,20 +68,27 @@ function TrackWaveform({ url, color, width, nearSilent = false }: { url: string;
         const center = height / 2;
         const visualScale = (value: number) => Math.sign(value) * Math.log1p(Math.abs(value) * 20) / Math.log(21);
 
-        context.beginPath();
-        for (let x = 0; x < width; x += 1) {
-          const peak = data.peaks[Math.min(data.peaks.length - 1, Math.floor(x / width * data.peaks.length))];
-          const top = center - visualScale(peak[1]) * center * 0.88;
-          const bottom = center - visualScale(peak[0]) * center * 0.88;
-          context.moveTo(x + 0.5, top);
-          context.lineTo(x + 0.5, Math.max(top + 1, bottom));
+        for (const section of project.sections) {
+          const destinationStart = Math.round(section.startBar / project.totalBars * width);
+          const destinationEnd = Math.round((section.startBar + section.lengthBars) / project.totalBars * width);
+          const sourceStart = sourceStartBar(section);
+          context.beginPath();
+          for (let x = Math.max(0, destinationStart); x < Math.min(width, destinationEnd); x += 1) {
+            const sectionProgress = (x - destinationStart) / Math.max(1, destinationEnd - destinationStart);
+            const sourceBar = sourceStart + sectionProgress * section.lengthBars;
+            const peak = data.peaks[Math.min(data.peaks.length - 1, Math.max(0, Math.floor(sourceBar / project.totalBars * data.peaks.length)))];
+            const top = center - visualScale(peak[1]) * center * 0.88;
+            const bottom = center - visualScale(peak[0]) * center * 0.88;
+            context.moveTo(x + 0.5, top);
+            context.lineTo(x + 0.5, Math.max(top + 1, bottom));
+          }
+          context.stroke();
         }
-        context.stroke();
       })
       .catch(() => undefined);
 
     return () => { cancelled = true; };
-  }, [color, nearSilent, url, width]);
+  }, [color, nearSilent, project, url, width]);
 
   return <canvas ref={canvasRef} className="track-waveform" aria-hidden="true" />;
 }
@@ -102,17 +110,19 @@ export function VoiceRemixStudio() {
   ]);
   const history = useRef(createProjectHistory<Project>());
   const scheduled = useRef(false);
-  const players = useRef<Partial<Record<TrackId, Tone.Player>>>({});
+  const audioSetup = useRef<Promise<void> | null>(null);
+  const players = useRef<Partial<Record<TrackId, Tone.Player[]>>>({});
+  const buffers = useRef<Partial<Record<TrackId, Tone.ToneAudioBuffer>>>({});
+  const scheduledArrangement = useRef("");
 
   useEffect(() => {
     projectRef.current = project;
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
     project.tracks.forEach((track) => {
-      const player = players.current[track.id];
-      if (player) {
+      players.current[track.id]?.forEach((player) => {
         player.mute = !track.enabled;
         player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
-      }
+      });
     });
   }, [project]);
 
@@ -120,9 +130,8 @@ export function VoiceRemixStudio() {
     let frame = 0;
     const update = () => {
       const transport = Tone.getTransport();
-      const barSeconds = (60 / projectRef.current.bpm) * 4;
       if (transport.state === "started") {
-        setPosition((transport.seconds / barSeconds) % TOTAL_BARS);
+        setPosition((transport.seconds / AUDIO_DURATION * TOTAL_BARS) % TOTAL_BARS);
       }
       frame = requestAnimationFrame(update);
     };
@@ -130,20 +139,66 @@ export function VoiceRemixStudio() {
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const setupAudio = async () => {
-    if (!scheduled.current) {
-      INITIAL_PROJECT.tracks.forEach((track) => {
-        const player = new Tone.Player({ url: track.audioUrl, loop: true, loopEnd: AUDIO_DURATION }).toDestination();
-        player.mute = !projectRef.current.tracks.find((item) => item.id === track.id)?.enabled;
-        player.sync().start(0);
-        players.current[track.id] = player;
+  useEffect(() => () => {
+    const transport = Tone.getTransport();
+    transport.stop();
+    transport.cancel();
+    Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
+    Object.values(buffers.current).forEach((buffer) => buffer.dispose());
+    players.current = {};
+    buffers.current = {};
+  }, []);
+
+  function disposeArrangementPlayers() {
+    Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
+    players.current = {};
+  }
+
+  function scheduleAudioArrangement(nextProject: Project, force = false) {
+    const signature = arrangementSignature(nextProject);
+    if (!force && signature === scheduledArrangement.current) return;
+    if (nextProject.tracks.some((track) => !buffers.current[track.id])) return;
+
+    const transport = Tone.getTransport();
+    const wasPlaying = transport.state === "started";
+    if (wasPlaying) transport.pause();
+    disposeArrangementPlayers();
+
+    const segments = createArrangementSegments(nextProject, AUDIO_DURATION);
+    nextProject.tracks.forEach((track) => {
+      const buffer = buffers.current[track.id]!;
+      players.current[track.id] = segments.map((segment) => {
+        const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination();
+        player.mute = !track.enabled;
+        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
+        player.sync().start(segment.destinationStartSeconds, segment.sourceStartSeconds, segment.durationSeconds);
+        return player;
       });
+    });
+
+    transport.seconds = 0;
+    setPosition(0);
+    scheduledArrangement.current = signature;
+    if (wasPlaying) transport.start("+0.05");
+  }
+
+  const setupAudio = async () => {
+    if (scheduled.current) return;
+    audioSetup.current ??= (async () => {
+      const loadedBuffers = await Promise.all(INITIAL_PROJECT.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
+      loadedBuffers.forEach(([trackId, buffer]) => { buffers.current[trackId] = buffer; });
       const transport = Tone.getTransport();
       transport.loop = true;
       transport.loopEnd = AUDIO_DURATION;
+      scheduleAudioArrangement(projectRef.current, true);
       scheduled.current = true;
+    })();
+    try {
+      await audioSetup.current;
+    } catch (error) {
+      audioSetup.current = null;
+      throw error;
     }
-    await Tone.loaded();
   };
 
   const togglePlay = async () => {
@@ -163,6 +218,7 @@ export function VoiceRemixStudio() {
     history.current = recordHistory(history.current, projectRef.current, cloneProject);
     if (next.version === projectRef.current.version) next.version += 1;
     projectRef.current = next;
+    scheduleAudioArrangement(next);
     setCanUndo(true);
     setCanRedo(false);
     setProject(next);
@@ -175,6 +231,7 @@ export function VoiceRemixStudio() {
     if (!result) return;
     history.current = result.history;
     projectRef.current = result.value;
+    scheduleAudioArrangement(result.value);
     setCanUndo(history.current.past.length > 0);
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
@@ -187,6 +244,7 @@ export function VoiceRemixStudio() {
     if (!result) return;
     history.current = result.history;
     projectRef.current = result.value;
+    scheduleAudioArrangement(result.value);
     setCanUndo(history.current.past.length > 0);
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
@@ -405,7 +463,7 @@ export function VoiceRemixStudio() {
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
-                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} nearSilent={track.nearSilent} />
+                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} project={project} nearSilent={track.nearSilent} />
                       {project.sections.map((section) => (
                         <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""} ${affectedSectionIds.has(section.id) ? "is-affected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
                           <span>{section.label}</span>

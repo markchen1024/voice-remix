@@ -131,13 +131,14 @@ Preview is intentionally non-mutating. Ghost clips are calculated from selected 
 
 ## 5. Audio and waveform design
 
-- Five Tone.js `Player` instances share one `Transport`.
-- Players use the same loop duration and start time for synchronized playback.
+- Five shared `ToneAudioBuffer` sources feed section-level `Player` instances on one `Transport`.
+- Each section preserves an immutable source-bar position and a mutable destination-bar position.
+- Applying a section move reschedules the matching source region for every stem at the new destination, so the edit is audible without rewriting source files.
 - Mute and gain are derived from canonical track state.
-- The playhead reads transport time and converts it to bars using project BPM.
-- Source-derived min/max peak envelopes are stored as JSON and rendered with Canvas.
+- The playhead reads transport time against the source duration and shared bar grid.
+- Source-derived min/max peak envelopes are stored as JSON; Canvas applies the same source-to-destination section mapping as the audio scheduler.
 - Near-silent FX is labelled rather than visually normalized into a misleading full waveform.
-- Source audio remains unchanged; project operations are non-destructive metadata edits.
+- Source audio remains unchanged; project operations are non-destructive schedule edits.
 
 ## 6. Implemented libraries
 
@@ -184,8 +185,9 @@ The current suite verifies:
 - solo/mute operations;
 - Undo/Redo and future-branch clearing;
 - server-rendered studio content;
-- waveform resolution and source duration; and
-- near-silent waveform handling.
+- waveform resolution and source duration;
+- near-silent waveform handling; and
+- source-preserving section-to-playback scheduling.
 
 `npm test` always performs a production build before running the tests.
 
@@ -194,7 +196,7 @@ The current suite verifies:
 The submission does not claim these are implemented:
 
 - OpenAI Realtime transcription;
-- audio-region resampling or destructive file rewriting;
+- rendered mix download and destructive file rewriting;
 - automatic section detection;
 - user uploads or stem separation;
 - MIDI editing or export;

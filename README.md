@@ -39,6 +39,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Five synchronized real audio stems in the browser
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
+- Non-destructive section rescheduling that produces an audible multitrack rearrangement
 - Browser speech recognition with text input as the reliable fallback
 - GPT-5.6 Sol arrangement planning through the Responses API
 - Zod-backed Structured Outputs and server-side domain validation
@@ -206,7 +207,7 @@ Open-source dependencies and their licenses are recorded in `package-lock.json`.
 ## Current limitations
 
 - Section boundaries are initialized demo metadata, not automatic audio analysis.
-- Moving a section currently changes arrangement metadata and timeline state; it does not destructively rewrite the source files.
+- Section moves are audible during browser playback and redraw source-mapped waveforms, but do not render a new downloadable mix yet.
 - Browser speech recognition availability varies by browser; text input is the guaranteed path.
 - The local fallback supports a smaller command set than GPT-5.6.
 - User upload, automatic stem separation, DAW export, and OpenAI Realtime transcription are post-submission work.

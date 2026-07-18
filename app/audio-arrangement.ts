@@ -1,0 +1,48 @@
+import type { Project, Section } from "./edit-transactions";
+
+export type ArrangementSegment = {
+  sectionId: string;
+  sourceStartBar: number;
+  destinationStartBar: number;
+  lengthBars: number;
+  sourceStartSeconds: number;
+  destinationStartSeconds: number;
+  durationSeconds: number;
+};
+
+export function sourceStartBar(section: Section) {
+  return section.sourceStartBar ?? section.startBar;
+}
+
+export function arrangementSignature(project: Project) {
+  return project.sections
+    .map((section) => `${section.id}:${sourceStartBar(section)}>${section.startBar}:${section.lengthBars}`)
+    .join("|");
+}
+
+export function createArrangementSegments(project: Project, audioDuration: number): ArrangementSegment[] {
+  if (project.totalBars <= 0 || audioDuration <= 0) return [];
+  const secondsPerBar = audioDuration / project.totalBars;
+
+  return project.sections.flatMap((section) => {
+    const sourceBar = Math.max(0, Math.min(project.totalBars, sourceStartBar(section)));
+    const destinationBar = Math.max(0, Math.min(project.totalBars, section.startBar));
+    const lengthBars = Math.max(0, Math.min(
+      section.lengthBars,
+      project.totalBars - sourceBar,
+      project.totalBars - destinationBar,
+    ));
+    if (lengthBars === 0) return [];
+
+    return [{
+      sectionId: section.id,
+      sourceStartBar: sourceBar,
+      destinationStartBar: destinationBar,
+      lengthBars,
+      sourceStartSeconds: sourceBar * secondsPerBar,
+      destinationStartSeconds: destinationBar * secondsPerBar,
+      durationSeconds: lengthBars * secondsPerBar,
+    }];
+  });
+}
+
