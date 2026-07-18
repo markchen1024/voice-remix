@@ -10,11 +10,11 @@ Rewrite the voiceover into your own speaking style. The lines below are prompts,
 |---|---|---|
 | 0:00–0:15 | Open on the playing multitrack editor; quickly mute/unmute drums | Generative music can make a song, but revising one precisely is still hard. DAWs give control, but expect production expertise. |
 | 0:15–0:30 | Show the five stems, real waveforms, ruler, and playhead | Voice Remix lets a creator ask for a musical change in ordinary language while keeping visual and manual control. |
-| 0:30–0:47 | Speak or paste `最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变` and click Apply edit | Explain the request in English: move the last chorus four bars earlier, strengthen drums, keep bass unchanged. |
+| 0:30–0:47 | Click the microphone and speak `最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变`; let the live transcript remain visible briefly | OpenAI Realtime streams the transcript while the music ducks instead of stopping. The editor sends GPT-5.6 the current playhead, selection, and project context. |
 | 0:47–1:10 | Hold on the Music Diff; point to `GPT-5.6-SOL`, MOVE, GAIN, and protected BASS | GPT-5.6 receives compact project context and returns Structured Output. The server validates every target and rebuilds trusted before/after values. |
 | 1:10–1:28 | Show ghost chorus position; deselect the drum operation | Nothing has changed yet. The creator can inspect the ghost preview and reject one part of a compound request. |
 | 1:28–1:45 | Apply only the chorus move; then Undo and Redo | Selected operations commit atomically, and every committed edit remains reversible. |
-| 1:45–2:02 | Enter `只保留贝斯和鼓`; briefly show the new proposal | A second request demonstrates contextual stem selection. Unsupported or invented model targets never reach the project. |
+| 1:45–2:02 | With a DRUMS gain proposal open, say `鼓再强一点`, then `就这样` | The follow-up refines the same Diff instead of stacking duplicates; the final voice command commits one reversible transaction. |
 | 2:02–2:22 | Cut to the architecture diagram or a tight code/README overlay | The model never receives audio or edits buffers. Deterministic TypeScript owns the project; Tone.js owns synchronized playback. |
 | 2:22–2:38 | Show a compact Git log/commit montage and return to the app | Codex was used throughout research, interface iteration, implementation, tests, and debugging, with incremental Build Week commits. |
 | 2:38–2:48 | End on the studio and tagline | “Say the change. See the diff. Keep control.” |
@@ -26,7 +26,7 @@ Rewrite the voiceover into your own speaking style. The lines below are prompts,
 - Close notifications and hide bookmarks, API consoles, local paths, and account information.
 - Preload the track, then begin screen recording after browser audio has been unlocked by a click.
 - Use headphones to prevent playback leaking into narration or voice recognition.
-- If speaking the edit live is unreliable, paste it and explain that browser speech input is also supported.
+- Rehearse microphone permission before recording. If Realtime is unavailable, use the visible bounded-transcription fallback or text and disclose the fallback honestly.
 - Keep music under the voiceover; check both on laptop speakers and headphones.
 - Use only the demo track after confirming public playback/video rights under the entrant's Suno plan.
 - Upload the finished video to YouTube as **Public**, not Unlisted, and verify it while signed out.
@@ -41,8 +41,9 @@ Before recording, verify:
 4. The ghost clip appears before Apply.
 5. Deselecting one operation changes what Apply commits.
 6. Undo and Redo both restore the expected timeline state.
-7. The second request produces a readable proposal.
-8. No fallback/error messages are visible in the final take.
+7. Partial transcript text appears before the voice turn completes.
+8. `鼓再强一点` leaves one rebased DRUMS gain operation, and `就这样` commits it.
+9. No fallback/error messages are visible in the final take.
 
 ## Resilient recording plan
 
@@ -58,4 +59,3 @@ Record the critical live API sequence as a clean continuous take while it is wor
 - [ ] Voiceover is clear and the track is not overpowering it.
 - [ ] No secrets, private information, or unlicensed visuals appear.
 - [ ] YouTube processing has completed at 1080p and the public link works while signed out.
-

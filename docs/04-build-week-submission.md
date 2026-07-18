@@ -103,7 +103,7 @@ Use these facts to write the final description yourself.
 
 ### Next steps
 
-- OpenAI Realtime transcription for low-latency multilingual voice interaction.
+- Section-scoped stem automation and richer Realtime function-tool coverage.
 - Automatic section analysis and user-uploaded stems.
 - Actual region rendering/time-stretching and DAW export.
 - Persistent projects, collaboration, and shareable edit histories.

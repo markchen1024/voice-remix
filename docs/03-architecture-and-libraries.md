@@ -8,10 +8,16 @@
 Voice Remix separates model interpretation, domain validation, canonical project state, visualization, and audio playback. GPT-5.6 proposes a bounded transaction; deterministic application code decides whether that proposal is valid and applies it only after user confirmation.
 
 ```text
-Browser speech recognition / text
+OpenAI Realtime WebRTC / text
                 |
                 v
-        React command surface
+ live transcript + command router
+        /                \
+       v                  v
+Tone.js transport    Editor Context
+                          |
+                          v
+                React command surface
                 |
                 v
        POST /api/plan-edit
@@ -51,9 +57,15 @@ Browser speech recognition / text
 
 The browser never receives the standard OpenAI API key.
 
+`app/realtime-transcription.ts` owns the browser WebRTC session. It receives a short-lived `ek_*` credential from `POST /api/realtime-session`, streams microphone audio directly to OpenAI, and emits partial and final transcripts. The bounded `/api/transcribe` upload path remains an automatic fallback.
+
+`app/editor-context.ts` derives and validates the model grounding context: playhead, active and selected sections, playback state, Current/Proposed audition state, active proposal, and history availability.
+
+`app/editor-command-router.ts` executes deterministic transport and proposal-control commands without sending them to the model. `app/proposal-refinement.ts` merges model follow-ups into the active proposal and rebases final before/after values onto canonical project state.
+
 ### Planner endpoint
 
-`app/api/plan-edit/route.ts` accepts a request and compact project snapshot. It returns a proposed transaction or a bounded error. The endpoint:
+`app/api/plan-edit/route.ts` accepts a request, compact project snapshot, and server-sanitized Editor Context. It returns a proposed transaction or a bounded error. The endpoint:
 
 - rejects missing or malformed inputs;
 - caps user-request length;
@@ -73,7 +85,7 @@ The model receives:
 - track IDs, labels, mute state, and gain; and
 - the user's music-edit request.
 
-It does not receive audio, waveform samples, MIDI, credentials, or history snapshots.
+It does not receive audio, waveform samples, MIDI, or credentials. It receives only the bounded active-proposal and Undo/Redo fields needed to resolve conversational references.
 
 The production default is `gpt-5.6-sol` with low reasoning effort. The model name can be overridden server-side through `OPENAI_MODEL`.
 
@@ -187,7 +199,11 @@ The current suite verifies:
 - server-rendered studio content;
 - waveform resolution and source duration;
 - near-silent waveform handling; and
-- source-preserving section-to-playback scheduling.
+- source-preserving section-to-playback scheduling;
+- Realtime session configuration and ephemeral credential isolation;
+- Editor Context grounding and sanitization;
+- deterministic transport/proposal command routing; and
+- conversational proposal merge and canonical rebasing.
 
 `npm test` always performs a production build before running the tests.
 
@@ -195,12 +211,11 @@ The current suite verifies:
 
 The submission does not claim these are implemented:
 
-- OpenAI Realtime transcription;
 - rendered mix download and destructive file rewriting;
 - automatic section detection;
 - user uploads or stem separation;
 - MIDI editing or export;
-- draggable clips;
+- section-scoped stem automation and draggable clips;
 - persistent accounts/projects; or
 - deployed collaboration and sharing.
 

@@ -40,8 +40,12 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
 - Non-destructive section rescheduling that produces an audible multitrack rearrangement
-- Browser speech recognition with text input as the reliable fallback
+- OpenAI Realtime transcription over browser WebRTC with live transcript deltas
+- Push-to-talk capture with automatic music ducking and request-based transcription fallback
 - GPT-5.6 Sol arrangement planning through the Responses API
+- Editor Context grounding for playhead, selection, Current/Proposed, history, and active proposals
+- Immediate voice transport commands for play, pause, seek, looping, A/B, Apply, Discard, Undo, and Redo
+- Conversational refinement that merges follow-up requests into one clean Music Diff
 - Zod-backed Structured Outputs and server-side domain validation
 - Versioned `EditTransaction` proposals with stale-project protection
 - Music Diff with per-operation selection, assumptions, and protected tracks
@@ -71,10 +75,14 @@ This separation is the core product idea: natural-language flexibility without s
 ## Architecture
 
 ```text
-Voice or text request
+Realtime voice or text request
         |
         v
-POST /api/plan-edit
+WebRTC transcript / immediate command router
+        |                         \
+        |                          +--> Tone.js transport
+        v
+Editor Context + POST /api/plan-edit
         |
         v
 GPT-5.6 Sol + Structured Outputs
@@ -211,9 +219,9 @@ Open-source dependencies and their licenses are recorded in `package-lock.json`.
 
 - Section boundaries are initialized demo metadata, not automatic audio analysis.
 - Section moves are audible during browser playback and redraw source-mapped waveforms, but do not render a new downloadable mix yet.
-- Browser speech recognition availability varies by browser; text input is the guaranteed path.
+- Realtime voice requires WebRTC, microphone permission, and OpenAI API access; request-based transcription and text remain fallbacks.
 - The local fallback supports a smaller command set than GPT-5.6.
-- User upload, automatic stem separation, DAW export, and OpenAI Realtime transcription are post-submission work.
+- User upload, automatic stem separation, rendered mix download, and DAW export remain post-submission work.
 
 ## Project documents
 

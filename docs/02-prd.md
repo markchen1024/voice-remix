@@ -186,13 +186,17 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 - model output is validated before preview
 - deterministic fixtures remain available for demo resilience
 
-### P1 — high-impact if time permits
+### Implemented P0 — realtime conversational control
 
 #### G. Realtime voice session
 
-- low-latency transcript updates
-- follow-up commands understand the active proposal and recent edit history
-- microphone failure falls back to text without blocking the editor
+- low-latency transcript updates over WebRTC
+- follow-up commands understand playhead, selection, active proposal, and history availability
+- transport and proposal-control commands bypass the planner
+- follow-up edits merge into one canonical Music Diff
+- microphone or Realtime failure falls back to bounded transcription and text
+
+### P1 — high-impact if time permits
 
 #### H. Quantized execution
 
