@@ -127,7 +127,7 @@ request
   -> replace canonical project
 ```
 
-Preview is intentionally non-mutating. Ghost clips are calculated from selected proposal operations and rendered above the canonical clips. Discard simply removes proposal state.
+Preview is intentionally non-mutating. Ghost clips are calculated from selected proposal operations and rendered above the canonical clips. A/B Audition builds a temporary project clone, schedules its selected operations for playback, and leaves the canonical project and history untouched. Switching back, changing the selection, or discarding restores canonical scheduling and mixer state.
 
 ## 5. Audio and waveform design
 

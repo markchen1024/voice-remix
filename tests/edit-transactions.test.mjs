@@ -36,6 +36,16 @@ test("only selected operations are applied atomically", () => {
   assert.equal(project.version, 7);
 });
 
+test("audition projects apply selected operations without changing version or source state", () => {
+  const transaction = createLocalTransaction("最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", project);
+  const audition = applyOperations(project, transaction.operations);
+  assert.equal(audition.version, project.version);
+  assert.equal(audition.sections[1].startBar, 40);
+  assert.equal(audition.tracks[0].level, 1.25);
+  assert.equal(project.sections[1].startBar, 44);
+  assert.equal(project.tracks[0].level, 1);
+});
+
 test("solo commands create deterministic mute operations", () => {
   const transaction = createLocalTransaction("只保留贝斯和鼓", project);
   assert.ok(transaction);

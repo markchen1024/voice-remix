@@ -100,6 +100,7 @@ export function VoiceRemixStudio() {
   const [position, setPosition] = useState(0);
   const [command, setCommand] = useState("");
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
+  const [auditioningProposal, setAuditioningProposal] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [listening, setListening] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
@@ -152,6 +153,15 @@ export function VoiceRemixStudio() {
   function disposeArrangementPlayers() {
     Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
     players.current = {};
+  }
+
+  function applyMixerState(nextProject: Project) {
+    nextProject.tracks.forEach((track) => {
+      players.current[track.id]?.forEach((player) => {
+        player.mute = !track.enabled;
+        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
+      });
+    });
   }
 
   function scheduleAudioArrangement(nextProject: Project, force = false) {
@@ -223,6 +233,7 @@ export function VoiceRemixStudio() {
     setCanRedo(false);
     setProject(next);
     setProposal(null);
+    setAuditioningProposal(false);
     setActivity((items) => [{ title, detail, time: "NOW" }, ...items].slice(0, 5));
   };
 
@@ -236,6 +247,7 @@ export function VoiceRemixStudio() {
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
     setProposal(null);
+    setAuditioningProposal(false);
     setActivity((items) => [{ title: "Undo", detail: "Restored the previous arrangement", time: "NOW" }, ...items].slice(0, 5));
   };
 
@@ -249,6 +261,7 @@ export function VoiceRemixStudio() {
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
     setProposal(null);
+    setAuditioningProposal(false);
     setActivity((items) => [{ title: "Redo", detail: "Reapplied the next arrangement", time: "NOW" }, ...items].slice(0, 5));
   };
 
@@ -270,6 +283,11 @@ export function VoiceRemixStudio() {
     event.preventDefault();
     const input = command.trim();
     if (!input || planning) return;
+    if (auditioningProposal) {
+      scheduleAudioArrangement(project);
+      applyMixerState(project);
+      setAuditioningProposal(false);
+    }
     if (/撤销|undo/i.test(input)) {
       undo();
       setCommand("");
@@ -300,13 +318,51 @@ export function VoiceRemixStudio() {
   };
 
   const toggleProposalOperation = (operationId: string) => {
-    setProposal((current) => current ? { ...current, operations: current.operations.map((operation) => operation.id === operationId ? { ...operation, selected: !operation.selected } : operation) } : null);
+    if (!proposal) return;
+    const nextProposal = { ...proposal, operations: proposal.operations.map((operation) => operation.id === operationId ? { ...operation, selected: !operation.selected } : operation) };
+    setProposal(nextProposal);
+    if (auditioningProposal) {
+      const auditionProject = applyOperations(project, nextProposal.operations);
+      scheduleAudioArrangement(auditionProject);
+      applyMixerState(auditionProject);
+      if (!nextProposal.operations.some((operation) => operation.selected)) setAuditioningProposal(false);
+    }
   };
 
   const discardProposal = () => {
     if (!proposal) return;
+    if (auditioningProposal) {
+      scheduleAudioArrangement(project);
+      applyMixerState(project);
+    }
     setActivity((items) => [{ title: "Proposal discarded", detail: "No project state was changed", time: "NOW" }, ...items].slice(0, 5));
     setProposal(null);
+    setAuditioningProposal(false);
+  };
+
+  const toggleProposalAudition = async () => {
+    if (!proposal) return;
+    await Tone.start();
+    await setupAudio();
+    const transport = Tone.getTransport();
+
+    if (auditioningProposal) {
+      scheduleAudioArrangement(project);
+      applyMixerState(project);
+      setAuditioningProposal(false);
+      setActivity((items) => [{ title: "Current mix", detail: "Audition ended · project was never changed", time: "NOW" }, ...items].slice(0, 5));
+    } else {
+      const auditionProject = applyOperations(project, proposal.operations);
+      scheduleAudioArrangement(auditionProject);
+      applyMixerState(auditionProject);
+      setAuditioningProposal(true);
+      setActivity((items) => [{ title: "Auditioning proposal", detail: "Temporary playback · project and history unchanged", time: "NOW" }, ...items].slice(0, 5));
+    }
+
+    if (transport.state !== "started") {
+      transport.start();
+      setPlaying(true);
+    }
   };
 
   const applyProposal = () => {
@@ -320,6 +376,7 @@ export function VoiceRemixStudio() {
     const next = applyOperations(project, proposal.operations, true);
     commit(next, "Music Diff committed", selectedOperations.map((operation) => `${describeOperation(operation).verb} ${operation.targetLabel}`).join(" · "));
     setProposal(null);
+    setAuditioningProposal(false);
   };
 
   const startListening = () => {
@@ -404,7 +461,7 @@ export function VoiceRemixStudio() {
           {proposal && (
             <section className="music-diff" aria-label="Proposed music edit">
               <div className="diff-heading">
-                <div><span className="overline">MUSIC DIFF · {proposal.planner.toUpperCase()} · PROJECT UNCHANGED</span><h2>{proposal.summary}</h2><p>Review every operation before it touches the arrangement.</p></div>
+                <div><span className="overline">MUSIC DIFF · {proposal.planner.toUpperCase()} · {auditioningProposal ? "AUDITION ONLY" : "PROJECT UNCHANGED"}</span><h2>{proposal.summary}</h2><p>{auditioningProposal ? "You are hearing a temporary A/B preview. History and project state are unchanged." : "Review every operation before it touches the arrangement."}</p></div>
                 <div className="diff-count"><strong>{selectedProposalOperations.length}</strong><span>of {proposal.operations.length} selected</span></div>
               </div>
               {proposal.protectedTargets.length > 0 && <div className="protected-row"><span>◇ PROTECTED</span>{proposal.protectedTargets.map((target) => <strong key={target}>{target}</strong>)}<small>will remain unchanged</small></div>}
@@ -424,7 +481,7 @@ export function VoiceRemixStudio() {
               </div>
               <div className="diff-footer">
                 <div>{proposal.assumptions.map((assumption) => <span key={assumption}>Assumption · {assumption}</span>)}</div>
-                <div><button type="button" onClick={discardProposal}>Discard</button><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
+                <div><button type="button" onClick={discardProposal}>Discard</button><button className={`audition-button ${auditioningProposal ? "active" : ""}`} type="button" onClick={toggleProposalAudition} disabled={!selectedProposalOperations.length}>{auditioningProposal ? "Hear current" : "Hear proposed"}</button><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
               </div>
             </section>
           )}
