@@ -26,5 +26,7 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /59<!-- --> bars/);
   assert.match(html, /What should change\?/);
   assert.match(html, /VISUAL EDITOR/);
+  assert.match(html, /aria-label="Playback position"/);
+  assert.match(html, /type="range"/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
 });

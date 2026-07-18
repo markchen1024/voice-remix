@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar, sourceStartBar } from "./audio-arrangement";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
@@ -111,6 +111,7 @@ export function VoiceRemixStudio() {
   const projectRef = useRef(project);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
+  const positionRef = useRef(0);
   const [command, setCommand] = useState("");
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
   const [auditioningProposal, setAuditioningProposal] = useState(false);
@@ -148,7 +149,9 @@ export function VoiceRemixStudio() {
     const update = () => {
       const transport = Tone.getTransport();
       if (transport.state === "started") {
-        setPosition((transport.seconds / AUDIO_DURATION * TOTAL_BARS) % TOTAL_BARS);
+        const nextPosition = (transport.seconds / AUDIO_DURATION * TOTAL_BARS) % TOTAL_BARS;
+        positionRef.current = nextPosition;
+        setPosition(nextPosition);
       }
       frame = requestAnimationFrame(update);
     };
@@ -193,7 +196,21 @@ export function VoiceRemixStudio() {
   function seekToBar(bar: number) {
     const nextPosition = Math.max(0, Math.min(TOTAL_BARS - 0.001, bar));
     Tone.getTransport().seconds = nextPosition / TOTAL_BARS * AUDIO_DURATION;
+    positionRef.current = nextPosition;
     setPosition(nextPosition);
+  }
+
+  function scrubToBar(bar: number) {
+    const nextPosition = Math.max(0, Math.min(TOTAL_BARS - 0.001, bar));
+    positionRef.current = nextPosition;
+    setPosition(nextPosition);
+    if (scheduled.current) Tone.getTransport().seconds = nextPosition / TOTAL_BARS * AUDIO_DURATION;
+  }
+
+  function scrubFromPointer(event: ReactPointerEvent<HTMLInputElement>) {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = (event.clientX - bounds.left) / bounds.width;
+    scrubToBar(ratio * (TOTAL_BARS - 0.001));
   }
 
   function auditionStartBar(nextProposal: EditTransaction) {
@@ -244,6 +261,7 @@ export function VoiceRemixStudio() {
         transport.loopEnd = AUDIO_DURATION;
         scheduleAudioArrangement(projectRef.current, true);
         applyMixerState(projectRef.current);
+        transport.seconds = positionRef.current / TOTAL_BARS * AUDIO_DURATION;
         scheduled.current = true;
       })();
     }
@@ -259,6 +277,12 @@ export function VoiceRemixStudio() {
     nextProject: Project,
     options: { autoplay?: boolean; seekBar?: number } = {},
   ) => {
+    const mixerOnly = isMixerOnlyTransition(scheduled.current, scheduledArrangement.current, nextProject, options.seekBar);
+    if (mixerOnly) {
+      applyMixerState(nextProject);
+      return true;
+    }
+
     const transitionId = ++audioTransition.current;
     const shouldPlay = options.autoplay ?? playingRef.current;
     setAudioSwitching(true);
@@ -576,7 +600,7 @@ export function VoiceRemixStudio() {
   const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
 
   return (
-    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState}>
+    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
@@ -721,7 +745,7 @@ export function VoiceRemixStudio() {
 
         <footer className="player-bar">
           <div className="mini-song"><CoverArt mini /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><input className="progress-track" style={{ "--progress": `${position / TOTAL_BARS * 100}%` } as React.CSSProperties} type="range" min="0" max={TOTAL_BARS - 0.001} step="0.01" value={position} onInput={(event) => scrubToBar(Number(event.currentTarget.value))} onChange={(event) => scrubToBar(Number(event.currentTarget.value))} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromPointer(event); }} aria-label="Playback position" aria-valuetext={`Bar ${Math.floor(position) + 1}`} /><span>1:59</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>

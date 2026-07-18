@@ -20,6 +20,15 @@ export function arrangementSignature(project: Project) {
     .join("|");
 }
 
+export function isMixerOnlyTransition(
+  audioReady: boolean,
+  scheduledSignature: string,
+  nextProject: Project,
+  seekBar?: number,
+) {
+  return audioReady && seekBar === undefined && arrangementSignature(nextProject) === scheduledSignature;
+}
+
 export function createArrangementSegments(project: Project, audioDuration: number): ArrangementSegment[] {
   if (project.totalBars <= 0 || audioDuration <= 0) return [];
   const secondsPerBar = audioDuration / project.totalBars;

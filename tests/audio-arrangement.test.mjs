@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar } from "../app/audio-arrangement.ts";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition } from "../app/audio-arrangement.ts";
 
 const project = {
   version: 2,
@@ -32,6 +32,14 @@ test("arrangement signature changes for audible placement or energy changes", ()
   assert.equal(arrangementSignature(gainOnly), before);
   assert.notEqual(arrangementSignature(moved), before);
   assert.notEqual(arrangementSignature(energized), before);
+});
+
+test("track mixer changes do not reschedule or restart the arrangement", () => {
+  const signature = arrangementSignature(project);
+  const muted = { ...project, tracks: [{ id: "drums", enabled: false, level: 1 }] };
+  assert.equal(isMixerOnlyTransition(true, signature, muted), true);
+  assert.equal(isMixerOnlyTransition(true, signature, muted, 12), false);
+  assert.equal(isMixerOnlyTransition(false, signature, muted), false);
 });
 
 test("audition starts one bar before the earliest selected section move", () => {
