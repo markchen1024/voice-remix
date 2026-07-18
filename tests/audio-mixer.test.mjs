@@ -78,3 +78,27 @@ test("section energy is included in each scheduled player's audible gain", () =>
   syncProjectMixer(project, players, (gain) => gain);
   assert.equal(players.drums[0].volume.value, 0.96);
 });
+
+test("section automation updates only the matching scheduled player", () => {
+  const project = {
+    version: 1,
+    totalBars: 8,
+    bpm: 118,
+    sections: [
+      { id: "verse", kind: "verse", label: "Verse", startBar: 0, lengthBars: 4, energy: 0.8 },
+      { id: "chorus", kind: "chorus", label: "Chorus", startBar: 4, lengthBars: 4, energy: 1 },
+    ],
+    tracks: [track("drums", true)],
+    automation: [{ sectionId: "chorus", trackId: "drums", enabled: false, level: 1.2 }],
+  };
+  const versePlayer = Object.assign(player(), { sectionId: "verse", mixGain: 1 });
+  const chorusPlayer = Object.assign(player(), { sectionId: "chorus", mixGain: 1 });
+  const status = syncProjectMixer(project, { drums: [versePlayer, chorusPlayer] }, (gain) => gain);
+
+  assert.equal(versePlayer.mute, false);
+  assert.equal(versePlayer.volume.value, 1);
+  assert.equal(chorusPlayer.mute, true);
+  assert.equal(status.mutedPlayerCount, 1);
+  chorusPlayer.mute = false;
+  assert.equal(chorusPlayer.volume.value, 1.2);
+});

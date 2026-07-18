@@ -25,12 +25,20 @@ export type Track = {
   nearSilent?: boolean;
 };
 
+export type SectionTrackAutomation = {
+  sectionId: string;
+  trackId: TrackId;
+  enabled?: boolean;
+  level?: number;
+};
+
 export type Project = {
   version: number;
   totalBars: number;
   bpm: number;
   sections: Section[];
   tracks: Track[];
+  automation?: SectionTrackAutomation[];
 };
 
 type OperationBase = {
@@ -72,7 +80,27 @@ export type SetSectionEnergyOperation = OperationBase & {
   afterEnergy: number;
 };
 
-export type EditOperation = MoveSectionOperation | SetTrackEnabledOperation | SetTrackGainOperation | SetSectionEnergyOperation;
+export type SetSectionTrackEnabledOperation = OperationBase & {
+  action: "set_section_track_enabled";
+  targetId: TrackId;
+  targetLabel: string;
+  sectionId: string;
+  sectionLabel: string;
+  beforeEnabled: boolean;
+  afterEnabled: boolean;
+};
+
+export type SetSectionTrackGainOperation = OperationBase & {
+  action: "set_section_track_gain";
+  targetId: TrackId;
+  targetLabel: string;
+  sectionId: string;
+  sectionLabel: string;
+  beforeLevel: number;
+  afterLevel: number;
+};
+
+export type EditOperation = MoveSectionOperation | SetTrackEnabledOperation | SetTrackGainOperation | SetSectionEnergyOperation | SetSectionTrackEnabledOperation | SetSectionTrackGainOperation;
 
 export type EditTransaction = {
   id: string;
@@ -96,6 +124,44 @@ const trackMatchers: Array<[RegExp, TrackId]> = [
 
 export function cloneProject(project: Project): Project {
   return JSON.parse(JSON.stringify(project)) as Project;
+}
+
+export function sectionTrackState(project: Project, sectionId: string, trackId: TrackId) {
+  const track = project.tracks.find((item) => item.id === trackId);
+  if (!track) throw new Error(`Unknown track: ${trackId}`);
+  const automation = project.automation?.find((item) => item.sectionId === sectionId && item.trackId === trackId);
+  return {
+    enabled: automation?.enabled ?? track.enabled,
+    level: automation?.level ?? track.level,
+  };
+}
+
+function setSectionTrackAutomation(project: Project, sectionId: string, trackId: TrackId, value: { enabled?: boolean; level?: number }) {
+  if (!project.sections.some((section) => section.id === sectionId)) throw new Error(`Unknown section: ${sectionId}`);
+  const track = project.tracks.find((item) => item.id === trackId);
+  if (!track) throw new Error(`Unknown track: ${trackId}`);
+
+  const automation = project.automation ?? [];
+  const index = automation.findIndex((item) => item.sectionId === sectionId && item.trackId === trackId);
+  const next = index >= 0 ? { ...automation[index] } : { sectionId, trackId };
+  if (value.enabled !== undefined) {
+    if (value.enabled === track.enabled) delete next.enabled;
+    else next.enabled = value.enabled;
+  }
+  if (value.level !== undefined) {
+    const level = Math.max(0, Math.min(1.5, value.level));
+    if (level === track.level) delete next.level;
+    else next.level = level;
+  }
+
+  if (next.enabled === undefined && next.level === undefined) {
+    if (index >= 0) automation.splice(index, 1);
+  } else if (index >= 0) {
+    automation[index] = next;
+  } else {
+    automation.push(next);
+  }
+  project.automation = automation;
 }
 
 function rippleSectionEarlier(project: Project, targetId: string, requestedStartBar: number) {
@@ -134,6 +200,10 @@ export function applyOperations(project: Project, operations: EditOperation[], i
       const section = next.sections.find((item) => item.id === operation.targetId);
       if (!section) throw new Error(`Unknown section: ${operation.targetId}`);
       section.energy = Math.max(0.1, Math.min(1, operation.afterEnergy));
+    } else if (operation.action === "set_section_track_enabled") {
+      setSectionTrackAutomation(next, operation.sectionId, operation.targetId, { enabled: operation.afterEnabled });
+    } else if (operation.action === "set_section_track_gain") {
+      setSectionTrackAutomation(next, operation.sectionId, operation.targetId, { level: operation.afterLevel });
     } else {
       const track = next.tracks.find((item) => item.id === operation.targetId);
       if (!track) throw new Error(`Unknown track: ${operation.targetId}`);
@@ -230,5 +300,7 @@ export function describeOperation(operation: EditOperation) {
   if (operation.action === "move_section") return { verb: "MOVE", target: operation.targetLabel, before: `Bar ${operation.beforeStartBar + 1}`, after: `Bar ${operation.afterStartBar + 1}` };
   if (operation.action === "set_track_enabled") return { verb: operation.afterEnabled ? "UNMUTE" : "MUTE", target: operation.targetLabel, before: operation.beforeEnabled ? "On" : "Muted", after: operation.afterEnabled ? "On" : "Muted" };
   if (operation.action === "set_track_gain") return { verb: "GAIN", target: operation.targetLabel, before: `${Math.round(operation.beforeLevel * 100)}%`, after: `${Math.round(operation.afterLevel * 100)}%` };
+  if (operation.action === "set_section_track_enabled") return { verb: operation.afterEnabled ? "UNMUTE" : "MUTE", target: operation.targetLabel, before: operation.beforeEnabled ? "On" : "Muted", after: operation.afterEnabled ? "On" : "Muted" };
+  if (operation.action === "set_section_track_gain") return { verb: "GAIN", target: operation.targetLabel, before: `${Math.round(operation.beforeLevel * 100)}%`, after: `${Math.round(operation.afterLevel * 100)}%` };
   return { verb: "ENERGY", target: operation.targetLabel, before: `${Math.round(operation.beforeEnergy * 100)}%`, after: `${Math.round(operation.afterEnergy * 100)}%` };
 }

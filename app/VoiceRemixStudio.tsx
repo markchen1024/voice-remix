@@ -39,7 +39,7 @@ const INITIAL_PROJECT: Project = {
 const BAR_PX = 58;
 const TOTAL_BARS = 59;
 const AUDIO_DURATION = 119.4;
-type ScheduledPlayer = Tone.Player & { mixGain: number };
+type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
 function CoverArt({ mini = false }: { mini?: boolean }) {
   return (
@@ -239,6 +239,7 @@ export function VoiceRemixStudio() {
       players.current[track.id] = segments.map((segment) => {
         const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination() as ScheduledPlayer;
         const section = nextProject.sections.find((item) => item.id === segment.sectionId);
+        player.sectionId = segment.sectionId;
         player.mixGain = sectionEnergyGain(section?.energy ?? 1);
         player.volume.value = Tone.gainToDb(Math.max(0.001, track.level * player.mixGain));
         player.mute = !track.enabled;

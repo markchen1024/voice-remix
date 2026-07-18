@@ -1,8 +1,9 @@
-import type { Project, TrackId } from "./edit-transactions";
+import { sectionTrackState, type Project, type TrackId } from "./edit-transactions.ts";
 
 export type MixerPlayer = {
   mute: boolean;
   mixGain?: number;
+  sectionId?: string;
   volume: { value: number };
 };
 
@@ -42,10 +43,11 @@ export function syncProjectMixer<TPlayer extends MixerPlayer>(
   const tracks = project.tracks.map((track) => {
     const trackPlayers = players[track.id] ?? [];
     for (const player of trackPlayers) {
-      player.volume.value = gainToDb(Math.max(0.001, track.level * (player.mixGain ?? 1)));
+      const state = player.sectionId ? sectionTrackState(project, player.sectionId, track.id) : track;
+      player.volume.value = gainToDb(Math.max(0.001, state.level * (player.mixGain ?? 1)));
       // Tone implements mute by setting volume to -Infinity, so volume must be
       // restored first and mute applied last.
-      player.mute = !track.enabled;
+      player.mute = !state.enabled;
     }
     return {
       id: track.id,

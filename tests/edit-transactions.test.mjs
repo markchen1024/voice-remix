@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyOperations, createLocalTransaction } from "../app/edit-transactions.ts";
+import { applyOperations, createLocalTransaction, sectionTrackState } from "../app/edit-transactions.ts";
 
 const track = (id, label) => ({ id, label, role: "test", color: "#fff", enabled: true, level: 1, audioUrl: "", peaksUrl: "", meanDb: -20, maxDb: -3 });
 const project = {
@@ -78,4 +78,35 @@ test("moving a section earlier ripples later sections and trims the predecessor"
   assert.equal(next.sections.find((section) => section.id === "build-1").lengthBars, 3);
   assert.equal(next.sections.find((section) => section.id === "chorus-2").startBar, 40);
   assert.equal(next.sections.find((section) => section.id === "outro-1").startBar, 49);
+});
+
+test("section track automation changes one stem in one section without changing global track state", () => {
+  const next = applyOperations(project, [{
+    id: "final-drums",
+    action: "set_section_track_gain",
+    targetId: "drums",
+    targetLabel: "DRUMS · Final Chorus",
+    sectionId: "chorus-2",
+    sectionLabel: "Final Chorus",
+    beforeLevel: 1,
+    afterLevel: 1.2,
+    explanation: "Raise drums only in the final chorus.",
+    selected: true,
+  }, {
+    id: "first-synth",
+    action: "set_section_track_enabled",
+    targetId: "synth",
+    targetLabel: "SYNTH · Chorus",
+    sectionId: "chorus-1",
+    sectionLabel: "Chorus",
+    beforeEnabled: true,
+    afterEnabled: false,
+    explanation: "Mute synth only in the first chorus.",
+    selected: true,
+  }]);
+
+  assert.equal(next.tracks.find((item) => item.id === "drums").level, 1);
+  assert.deepEqual(sectionTrackState(next, "chorus-2", "drums"), { enabled: true, level: 1.2 });
+  assert.deepEqual(sectionTrackState(next, "chorus-1", "drums"), { enabled: true, level: 1 });
+  assert.deepEqual(sectionTrackState(next, "chorus-1", "synth"), { enabled: false, level: 1 });
 });
