@@ -9,7 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/ai-planner.test.mjs tests/audio-arrangement.test.mjs tests/edit-transactions.test.mjs tests/project-history.test.mjs tests/rendered-html.test.mjs tests/waveform-peaks.test.mjs",
+    "test": "npm run build && node --test tests/ai-planner.test.mjs tests/audio-arrangement.test.mjs tests/edit-transactions.test.mjs tests/project-export.test.mjs tests/project-history.test.mjs tests/rendered-html.test.mjs tests/waveform-peaks.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

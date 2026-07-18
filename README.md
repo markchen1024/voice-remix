@@ -50,6 +50,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Automatic audition seek to one bar before the earliest affected section
 - Atomic Apply and Discard
 - Undo/Redo history with branch invalidation after a new edit
+- Versioned `.voice-remix.json` project export with source/destination section mapping
 - Deterministic local planner when the API is unavailable
 
 ## Trust boundary

@@ -5,6 +5,7 @@ import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, sourceStartBar } from "./audio-arrangement";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
+import { createProjectExport, projectExportFilename } from "./project-export";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -416,6 +417,20 @@ export function VoiceRemixStudio() {
     recognition.start();
   };
 
+  const exportProject = () => {
+    const data = createProjectExport(project);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = projectExportFilename("Neon Pulse Loop");
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setActivity((items) => [{ title: "Project exported", detail: `${project.sections.length} sections · ${project.tracks.length} stems · version ${project.version}`, time: "NOW" }, ...items].slice(0, 5));
+  };
+
   const selected = project.sections.find((section) => section.id === selectedSection)!;
   const active = sectionAt(project, Math.floor(position));
   const barLabels = useMemo(() => Array.from({ length: TOTAL_BARS }, (_, index) => index + 1), []);
@@ -450,7 +465,7 @@ export function VoiceRemixStudio() {
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
             <button onClick={redo} disabled={!canRedo}>↷ Redo</button>
             <button className="soft-button">Share</button>
-            <button className="export-button">Export <span>↓</span></button>
+            <button className="export-button" onClick={exportProject}>Export <span>↓</span></button>
           </div>
         </header>
 
