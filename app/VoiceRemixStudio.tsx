@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
-import { arrangementSignature, createArrangementSegments, sourceStartBar } from "./audio-arrangement";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar, sourceStartBar } from "./audio-arrangement";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 
@@ -162,6 +162,17 @@ export function VoiceRemixStudio() {
         player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
       });
     });
+  }
+
+  function seekToBar(bar: number) {
+    const nextPosition = Math.max(0, Math.min(TOTAL_BARS - 0.001, bar));
+    Tone.getTransport().seconds = nextPosition / TOTAL_BARS * AUDIO_DURATION;
+    setPosition(nextPosition);
+  }
+
+  function auditionStartBar(nextProposal: EditTransaction) {
+    const fallback = project.sections.find((section) => section.id === selectedSection)?.startBar ?? position;
+    return findAuditionStartBar(nextProposal.operations, fallback);
   }
 
   function scheduleAudioArrangement(nextProject: Project, force = false) {
@@ -325,6 +336,7 @@ export function VoiceRemixStudio() {
       const auditionProject = applyOperations(project, nextProposal.operations);
       scheduleAudioArrangement(auditionProject);
       applyMixerState(auditionProject);
+      seekToBar(auditionStartBar(nextProposal));
       if (!nextProposal.operations.some((operation) => operation.selected)) setAuditioningProposal(false);
     }
   };
@@ -349,14 +361,17 @@ export function VoiceRemixStudio() {
     if (auditioningProposal) {
       scheduleAudioArrangement(project);
       applyMixerState(project);
+      seekToBar(auditionStartBar(proposal));
       setAuditioningProposal(false);
       setActivity((items) => [{ title: "Current mix", detail: "Audition ended · project was never changed", time: "NOW" }, ...items].slice(0, 5));
     } else {
       const auditionProject = applyOperations(project, proposal.operations);
       scheduleAudioArrangement(auditionProject);
       applyMixerState(auditionProject);
+      const startBar = auditionStartBar(proposal);
+      seekToBar(startBar);
       setAuditioningProposal(true);
-      setActivity((items) => [{ title: "Auditioning proposal", detail: "Temporary playback · project and history unchanged", time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: "Auditioning proposal", detail: `Starting at bar ${Math.floor(startBar) + 1} · project and history unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
 
     if (transport.state !== "started") {

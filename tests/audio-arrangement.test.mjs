@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { arrangementSignature, createArrangementSegments } from "../app/audio-arrangement.ts";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar } from "../app/audio-arrangement.ts";
 
 const project = {
   version: 2,
@@ -32,3 +32,12 @@ test("arrangement signature changes only when audio placement changes", () => {
   assert.notEqual(arrangementSignature(moved), before);
 });
 
+test("audition starts one bar before the earliest selected section move", () => {
+  const operations = [
+    { action: "move_section", selected: true, afterStartBar: 40 },
+    { action: "move_section", selected: false, afterStartBar: 12 },
+    { action: "set_track_gain", selected: true },
+  ];
+  assert.equal(findAuditionStartBar(operations, 16), 39);
+  assert.equal(findAuditionStartBar([{ action: "set_track_gain", selected: true }], 16), 15);
+});

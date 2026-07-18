@@ -47,6 +47,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Music Diff with per-operation selection, assumptions, and protected tracks
 - Timeline ghost preview for proposed section moves
 - A/B audio audition of selected proposal operations without changing project state
+- Automatic audition seek to one bar before the earliest affected section
 - Atomic Apply and Discard
 - Undo/Redo history with branch invalidation after a new edit
 - Deterministic local planner when the API is unavailable

@@ -1,4 +1,4 @@
-import type { Project, Section } from "./edit-transactions";
+import type { EditOperation, Project, Section } from "./edit-transactions";
 
 export type ArrangementSegment = {
   sectionId: string;
@@ -46,3 +46,10 @@ export function createArrangementSegments(project: Project, audioDuration: numbe
   });
 }
 
+export function findAuditionStartBar(operations: EditOperation[], fallbackBar: number, leadBars = 1) {
+  const movedStarts = operations
+    .filter((operation) => operation.selected && operation.action === "move_section")
+    .map((operation) => operation.afterStartBar);
+  const targetBar = movedStarts.length > 0 ? Math.min(...movedStarts) : fallbackBar;
+  return Math.max(0, targetBar - Math.max(0, leadBars));
+}
