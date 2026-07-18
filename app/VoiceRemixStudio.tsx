@@ -116,17 +116,21 @@ export function VoiceRemixStudio() {
   const players = useRef<Partial<Record<TrackId, Tone.Player[]>>>({});
   const buffers = useRef<Partial<Record<TrackId, Tone.ToneAudioBuffer>>>({});
   const scheduledArrangement = useRef("");
+  const audibleProject = useMemo(
+    () => auditioningProposal && proposal ? applyOperations(project, proposal.operations) : project,
+    [auditioningProposal, project, proposal],
+  );
 
   useEffect(() => {
     projectRef.current = project;
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
-    project.tracks.forEach((track) => {
+    audibleProject.tracks.forEach((track) => {
       players.current[track.id]?.forEach((player) => {
         player.mute = !track.enabled;
         player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
       });
     });
-  }, [project]);
+  }, [audibleProject, project]);
 
   useEffect(() => {
     let frame = 0;
@@ -353,13 +357,13 @@ export function VoiceRemixStudio() {
     setAuditioningProposal(false);
   };
 
-  const toggleProposalAudition = async () => {
-    if (!proposal) return;
+  const setProposalAudition = async (proposed: boolean) => {
+    if (!proposal || proposed === auditioningProposal) return;
     await Tone.start();
     await setupAudio();
     const transport = Tone.getTransport();
 
-    if (auditioningProposal) {
+    if (!proposed) {
       scheduleAudioArrangement(project);
       applyMixerState(project);
       seekToBar(auditionStartBar(proposal));
@@ -491,7 +495,7 @@ export function VoiceRemixStudio() {
           {proposal && (
             <section className="music-diff" aria-label="Proposed music edit">
               <div className="diff-heading">
-                <div><span className="overline">MUSIC DIFF · {proposal.planner.toUpperCase()} · {auditioningProposal ? "AUDITION ONLY" : "PROJECT UNCHANGED"}</span><h2>{proposal.summary}</h2><p>{auditioningProposal ? "You are hearing a temporary A/B preview. History and project state are unchanged." : "Review every operation before it touches the arrangement."}</p></div>
+                <div><span className="overline">MUSIC DIFF · {proposal.planner.toUpperCase()} · {auditioningProposal ? "PROPOSED IS PLAYING" : "CURRENT IS PLAYING"}</span><h2>{proposal.summary}</h2><p>{auditioningProposal ? "Temporary audition is active. Teal track labels show what you are hearing; project and history remain unchanged." : "Review every operation, then switch to Proposed to hear the selected changes."}</p></div>
                 <div className="diff-count"><strong>{selectedProposalOperations.length}</strong><span>of {proposal.operations.length} selected</span></div>
               </div>
               {proposal.protectedTargets.length > 0 && <div className="protected-row"><span>◇ PROTECTED</span>{proposal.protectedTargets.map((target) => <strong key={target}>{target}</strong>)}<small>will remain unchanged</small></div>}
@@ -511,7 +515,7 @@ export function VoiceRemixStudio() {
               </div>
               <div className="diff-footer">
                 <div>{proposal.assumptions.map((assumption) => <span key={assumption}>Assumption · {assumption}</span>)}</div>
-                <div><button type="button" onClick={discardProposal}>Discard</button><button className={`audition-button ${auditioningProposal ? "active" : ""}`} type="button" onClick={toggleProposalAudition} disabled={!selectedProposalOperations.length}>{auditioningProposal ? "Hear current" : "Hear proposed"}</button><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
+                <div><button type="button" onClick={discardProposal}>Discard</button><div className="audition-switch" role="group" aria-label="Audition version"><button className={!auditioningProposal ? "active" : ""} type="button" aria-pressed={!auditioningProposal} onClick={() => setProposalAudition(false)}>Current</button><button className={auditioningProposal ? "active" : ""} type="button" aria-pressed={auditioningProposal} onClick={() => setProposalAudition(true)} disabled={!selectedProposalOperations.length}>Proposed</button></div><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
               </div>
             </section>
           )}
@@ -519,7 +523,7 @@ export function VoiceRemixStudio() {
           <section className="song-card">
             <div className="cover-art"><div className="cover-orbit one" /><div className="cover-orbit two" /><i>VR</i></div>
             <div className="song-info">
-              <span className="overline">CURRENT ARRANGEMENT</span>
+              <span className={`overline ${auditioningProposal ? "audition-label" : ""}`}>{auditioningProposal ? "AUDITIONING PROPOSED · NOT APPLIED" : "CURRENT ARRANGEMENT"}</span>
               <h2>Neon Pulse Loop</h2>
               <p>Alt-electronic · Neon pop · Instrumental</p>
               <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>5 Suno stems</span></div>
@@ -541,12 +545,15 @@ export function VoiceRemixStudio() {
                 <div className="bar-ruler" style={{ width: TOTAL_BARS * BAR_PX }}>
                   {barLabels.map((bar) => <span key={bar} style={{ width: BAR_PX }}>{bar}</span>)}
                 </div>
-                {project.tracks.map((track) => (
-                  <div className={`track-row ${track.enabled ? "" : "is-muted"}`} key={track.id}>
+                {project.tracks.map((track) => {
+                  const audibleTrack = audibleProject.tracks.find((item) => item.id === track.id) ?? track;
+                  const auditionChanged = auditioningProposal && (audibleTrack.enabled !== track.enabled || audibleTrack.level !== track.level);
+                  return (
+                  <div className={`track-row ${audibleTrack.enabled ? "" : "is-muted"} ${auditionChanged ? "is-audition-changed" : ""}`} data-audition-state={auditioningProposal ? (audibleTrack.enabled ? "on" : "muted") : "current"} key={track.id}>
                     <div className="track-header">
                       <span className="track-color" style={{ background: track.color }} />
-                      <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={track.nearSilent ? "near-silent" : ""}>{track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
-                      <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`}>{track.enabled ? "M" : "○"}</button>
+                      <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={auditionChanged ? "audition-note" : track.nearSilent ? "near-silent" : ""}>{auditionChanged ? (audibleTrack.enabled ? `Proposed · ${Math.round(audibleTrack.level * 100)}% gain` : "Proposed · muted") : track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
+                      <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`} disabled={auditioningProposal}>{audibleTrack.enabled ? "M" : "○"}</button>
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
@@ -560,7 +567,8 @@ export function VoiceRemixStudio() {
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 
