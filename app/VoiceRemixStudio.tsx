@@ -4,6 +4,7 @@ import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, 
 import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
+import { routeImmediateEditorCommand, type ImmediateEditorCommand } from "./editor-command-router";
 import { createEditorContext } from "./editor-context";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
@@ -417,35 +418,77 @@ export function VoiceRemixStudio() {
     commit(next, `Moved ${section.label}`, `${delta > 0 ? "+" : ""}${delta} bar${Math.abs(delta) === 1 ? "" : "s"}`);
   };
 
+  const executeImmediateEditorCommand = async (editorCommand: ImmediateEditorCommand) => {
+    if (editorCommand.action === "play") {
+      if (!playingRef.current) await togglePlay();
+      setActivity((items) => [{ title: "Voice control · Play", detail: "Transport resumed", time: "NOW" }, ...items].slice(0, 5));
+    } else if (editorCommand.action === "pause") {
+      if (playingRef.current) await togglePlay();
+      setActivity((items) => [{ title: "Voice control · Pause", detail: "Transport paused", time: "NOW" }, ...items].slice(0, 5));
+    } else if (editorCommand.action === "undo") {
+      undo();
+    } else if (editorCommand.action === "redo") {
+      redo();
+    } else if (editorCommand.action === "apply_proposal") {
+      applyProposal();
+    } else if (editorCommand.action === "discard_proposal") {
+      await discardProposal();
+    } else if (editorCommand.action === "audition_current") {
+      await setProposalAudition(false);
+    } else if (editorCommand.action === "audition_proposed") {
+      await setProposalAudition(true);
+    } else if (editorCommand.action === "clear_loop") {
+      await setupAudio();
+      const transport = Tone.getTransport();
+      transport.loop = true;
+      transport.loopStart = 0;
+      transport.loopEnd = AUDIO_DURATION;
+      setActivity((items) => [{ title: "Voice control · Full song", detail: "Section loop cleared", time: "NOW" }, ...items].slice(0, 5));
+    } else if (editorCommand.action === "seek_section") {
+      const nextAudibleProject = auditioningProposal && proposedProject ? proposedProject : project;
+      const switched = await activateAudioProject(nextAudibleProject, { autoplay: true, seekBar: editorCommand.startBar });
+      if (!switched) return;
+      setSelectedSection(editorCommand.sectionId);
+      setActivity((items) => [{ title: `Voice control · ${editorCommand.label}`, detail: `Playing from bar ${editorCommand.startBar + 1}`, time: "NOW" }, ...items].slice(0, 5));
+    } else if (editorCommand.action === "loop_section") {
+      await setupAudio();
+      const transport = Tone.getTransport();
+      transport.loop = true;
+      transport.loopStart = editorCommand.startBar / TOTAL_BARS * AUDIO_DURATION;
+      transport.loopEnd = (editorCommand.startBar + editorCommand.lengthBars) / TOTAL_BARS * AUDIO_DURATION;
+      seekToBar(editorCommand.startBar);
+      if (transport.state !== "started") transport.start();
+      setPlaybackState(true);
+      setSelectedSection(editorCommand.sectionId);
+      setActivity((items) => [{ title: `Voice control · Loop ${editorCommand.label}`, detail: `Bars ${editorCommand.startBar + 1}–${editorCommand.startBar + editorCommand.lengthBars}`, time: "NOW" }, ...items].slice(0, 5));
+    }
+  };
+
   const createProposal = async (rawInput: string) => {
     const input = rawInput.trim();
     if (!input || planning) return;
+    const context = createEditorContext(project, {
+      playheadBar: positionRef.current,
+      playing: playingRef.current,
+      auditioningProposal,
+      selectedSectionId: selectedSection,
+      proposal,
+      canUndo,
+      canRedo,
+    });
+    const immediateCommand = routeImmediateEditorCommand(input, project, context);
+    if (immediateCommand) {
+      await executeImmediateEditorCommand(immediateCommand);
+      setCommand("");
+      return;
+    }
     if (auditioningProposal) {
       await activateAudioProject(project);
       setAuditioningProposal(false);
     }
-    if (/撤销|undo/i.test(input)) {
-      undo();
-      setCommand("");
-      return;
-    }
-    if (/重做|redo/i.test(input)) {
-      redo();
-      setCommand("");
-      return;
-    }
     setPlanning(true);
     let nextProposal: EditTransaction | null = null;
     try {
-      const context = createEditorContext(project, {
-        playheadBar: positionRef.current,
-        playing: playingRef.current,
-        auditioningProposal,
-        selectedSectionId: selectedSection,
-        proposal,
-        canUndo,
-        canRedo,
-      });
       const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project, context }) });
       if (response.ok) nextProposal = ((await response.json()) as { transaction: EditTransaction }).transaction;
     } catch {
