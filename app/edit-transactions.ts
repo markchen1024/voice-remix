@@ -107,13 +107,15 @@ function rippleSectionEarlier(project: Project, targetId: string, requestedStart
   const delta = afterStartBar - beforeStartBar;
   target.startBar = afterStartBar;
 
-  if (delta >= 0) return;
+  if (delta === 0) return;
 
   for (const section of project.sections) {
     if (section.id !== target.id && section.startBar > beforeStartBar) {
-      section.startBar = Math.max(0, section.startBar + delta);
+      section.startBar = Math.max(0, Math.min(project.totalBars - section.lengthBars, section.startBar + delta));
     }
   }
+
+  if (delta > 0) return;
 
   const predecessor = project.sections
     .filter((section) => section.id !== target.id && section.startBar < target.startBar)

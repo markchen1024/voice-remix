@@ -115,6 +115,7 @@ export function VoiceRemixStudio() {
   const [auditioningProposal, setAuditioningProposal] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [listening, setListening] = useState(false);
+  const [audioSwitching, setAudioSwitching] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -123,6 +124,8 @@ export function VoiceRemixStudio() {
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
   const history = useRef(createProjectHistory<Project>());
+  const playingRef = useRef(false);
+  const audioTransition = useRef(0);
   const scheduled = useRef(false);
   const audioSetup = useRef<Promise<void> | null>(null);
   const players = useRef<Partial<Record<TrackId, Tone.Player[]>>>({});
@@ -136,8 +139,7 @@ export function VoiceRemixStudio() {
   useEffect(() => {
     projectRef.current = project;
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
-    applyMixerState(audibleProject);
-  }, [audibleProject, project]);
+  }, [project]);
 
   useEffect(() => {
     let frame = 0;
@@ -178,6 +180,7 @@ export function VoiceRemixStudio() {
     disposeArrangementPlayers();
     Object.values(buffers.current).forEach((buffer) => buffer.dispose());
     buffers.current = {};
+    scheduled.current = false;
     scheduledArrangement.current = "";
     setMixerStatus(EMPTY_MIXER_STATUS);
     Tone.setContext(new Tone.Context({ latencyHint: "playback" }), true);
@@ -199,9 +202,6 @@ export function VoiceRemixStudio() {
     if (!force && signature === scheduledArrangement.current) return;
     if (nextProject.tracks.some((track) => !buffers.current[track.id])) return;
 
-    const transport = Tone.getTransport();
-    const wasPlaying = transport.state === "started";
-    if (wasPlaying) transport.pause();
     disposeArrangementPlayers();
 
     const segments = createArrangementSegments(nextProject, AUDIO_DURATION);
@@ -216,10 +216,12 @@ export function VoiceRemixStudio() {
       });
     });
 
-    transport.seconds = 0;
-    setPosition(0);
     scheduledArrangement.current = signature;
-    if (wasPlaying) transport.start("+0.05");
+  }
+
+  function setPlaybackState(nextPlaying: boolean) {
+    playingRef.current = nextPlaying;
+    setPlaying(nextPlaying);
   }
 
   const setupAudio = async () => {
@@ -235,6 +237,7 @@ export function VoiceRemixStudio() {
         transport.loop = true;
         transport.loopEnd = AUDIO_DURATION;
         scheduleAudioArrangement(projectRef.current, true);
+        applyMixerState(projectRef.current);
         scheduled.current = true;
       })();
     }
@@ -246,16 +249,60 @@ export function VoiceRemixStudio() {
     }
   };
 
+  const activateAudioProject = async (
+    nextProject: Project,
+    options: { autoplay?: boolean; seekBar?: number } = {},
+  ) => {
+    const transitionId = ++audioTransition.current;
+    const shouldPlay = options.autoplay ?? playingRef.current;
+    setAudioSwitching(true);
+    try {
+      await setupAudio();
+      if (transitionId !== audioTransition.current) return false;
+      await Tone.start();
+      if (transitionId !== audioTransition.current) return false;
+
+      const transport = Tone.getTransport();
+      if (transport.state === "started") transport.pause();
+      scheduleAudioArrangement(nextProject);
+      applyMixerState(nextProject);
+      if (options.seekBar !== undefined) seekToBar(options.seekBar);
+
+      if (shouldPlay) transport.start("+0.03");
+      setPlaybackState(shouldPlay);
+      return true;
+    } catch (error) {
+      console.error("Audio transition failed", error);
+      setPlaybackState(false);
+      setActivity((items) => [{ title: "Audio unavailable", detail: "Could not load the stem playback session", time: "NOW" }, ...items].slice(0, 5));
+      return false;
+    } finally {
+      if (transitionId === audioTransition.current) setAudioSwitching(false);
+    }
+  };
+
   const togglePlay = async () => {
-    await setupAudio();
-    await Tone.start();
-    const transport = Tone.getTransport();
-    if (transport.state === "started") {
-      transport.pause();
-      setPlaying(false);
-    } else {
-      transport.start();
-      setPlaying(true);
+    if (audioSwitching) return;
+    const transitionId = ++audioTransition.current;
+    setAudioSwitching(true);
+    try {
+      await setupAudio();
+      if (transitionId !== audioTransition.current) return;
+      await Tone.start();
+      const transport = Tone.getTransport();
+      if (transport.state === "started") {
+        transport.pause();
+        setPlaybackState(false);
+      } else {
+        transport.start();
+        setPlaybackState(true);
+      }
+    } catch (error) {
+      console.error("Playback toggle failed", error);
+      setPlaybackState(false);
+      setActivity((items) => [{ title: "Playback unavailable", detail: "Could not start the stem playback session", time: "NOW" }, ...items].slice(0, 5));
+    } finally {
+      if (transitionId === audioTransition.current) setAudioSwitching(false);
     }
   };
 
@@ -263,7 +310,7 @@ export function VoiceRemixStudio() {
     history.current = recordHistory(history.current, projectRef.current, cloneProject);
     if (next.version === projectRef.current.version) next.version += 1;
     projectRef.current = next;
-    scheduleAudioArrangement(next);
+    if (scheduled.current) void activateAudioProject(next);
     setCanUndo(true);
     setCanRedo(false);
     setProject(next);
@@ -277,7 +324,7 @@ export function VoiceRemixStudio() {
     if (!result) return;
     history.current = result.history;
     projectRef.current = result.value;
-    scheduleAudioArrangement(result.value);
+    if (scheduled.current) void activateAudioProject(result.value);
     setCanUndo(history.current.past.length > 0);
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
@@ -291,7 +338,7 @@ export function VoiceRemixStudio() {
     if (!result) return;
     history.current = result.history;
     projectRef.current = result.value;
-    scheduleAudioArrangement(result.value);
+    if (scheduled.current) void activateAudioProject(result.value);
     setCanUndo(history.current.past.length > 0);
     setCanRedo(history.current.future.length > 0);
     setProject(result.value);
@@ -308,9 +355,18 @@ export function VoiceRemixStudio() {
   };
 
   const nudgeSection = (delta: number) => {
-    const next = cloneProject(project);
-    const section = next.sections.find((item) => item.id === selectedSection)!;
-    section.startBar = Math.max(0, Math.min(TOTAL_BARS - section.lengthBars, section.startBar + delta));
+    const section = project.sections.find((item) => item.id === selectedSection)!;
+    const next = applyOperations(project, [{
+      id: `manual-move-${section.id}`,
+      action: "move_section",
+      targetId: section.id,
+      targetLabel: section.label,
+      beforeStartBar: section.startBar,
+      afterStartBar: section.startBar + delta,
+      lengthBars: section.lengthBars,
+      explanation: "Manual ripple move.",
+      selected: true,
+    }]);
     commit(next, `Moved ${section.label}`, `${delta > 0 ? "+" : ""}${delta} bar${Math.abs(delta) === 1 ? "" : "s"}`);
   };
 
@@ -319,8 +375,7 @@ export function VoiceRemixStudio() {
     const input = command.trim();
     if (!input || planning) return;
     if (auditioningProposal) {
-      scheduleAudioArrangement(project);
-      applyMixerState(project);
+      await activateAudioProject(project);
       setAuditioningProposal(false);
     }
     if (/撤销|undo/i.test(input)) {
@@ -352,24 +407,21 @@ export function VoiceRemixStudio() {
     setCommand("");
   };
 
-  const toggleProposalOperation = (operationId: string) => {
+  const toggleProposalOperation = async (operationId: string) => {
     if (!proposal) return;
     const nextProposal = { ...proposal, operations: proposal.operations.map((operation) => operation.id === operationId ? { ...operation, selected: !operation.selected } : operation) };
     setProposal(nextProposal);
     if (auditioningProposal) {
       const auditionProject = applyOperations(project, nextProposal.operations);
-      scheduleAudioArrangement(auditionProject);
-      applyMixerState(auditionProject);
-      seekToBar(auditionStartBar(nextProposal));
+      await activateAudioProject(auditionProject, { seekBar: auditionStartBar(nextProposal) });
       if (!nextProposal.operations.some((operation) => operation.selected)) setAuditioningProposal(false);
     }
   };
 
-  const discardProposal = () => {
+  const discardProposal = async () => {
     if (!proposal) return;
     if (auditioningProposal) {
-      scheduleAudioArrangement(project);
-      applyMixerState(project);
+      await activateAudioProject(project, { seekBar: auditionStartBar(proposal) });
     }
     setActivity((items) => [{ title: "Proposal discarded", detail: "No project state was changed", time: "NOW" }, ...items].slice(0, 5));
     setProposal(null);
@@ -378,29 +430,19 @@ export function VoiceRemixStudio() {
 
   const setProposalAudition = async (proposed: boolean) => {
     if (!proposal || proposed === auditioningProposal) return;
-    await setupAudio();
-    await Tone.start();
-    const transport = Tone.getTransport();
 
     if (!proposed) {
-      scheduleAudioArrangement(project);
-      applyMixerState(project);
-      seekToBar(auditionStartBar(proposal));
+      const switched = await activateAudioProject(project, { autoplay: true, seekBar: auditionStartBar(proposal) });
+      if (!switched) return;
       setAuditioningProposal(false);
       setActivity((items) => [{ title: "Current mix", detail: "Audition ended · project was never changed", time: "NOW" }, ...items].slice(0, 5));
     } else {
       const auditionProject = applyOperations(project, proposal.operations);
-      scheduleAudioArrangement(auditionProject);
-      applyMixerState(auditionProject);
       const startBar = auditionStartBar(proposal);
-      seekToBar(startBar);
+      const switched = await activateAudioProject(auditionProject, { autoplay: true, seekBar: startBar });
+      if (!switched) return;
       setAuditioningProposal(true);
       setActivity((items) => [{ title: "Auditioning proposal", detail: `Starting at bar ${Math.floor(startBar) + 1} · project and history unchanged`, time: "NOW" }, ...items].slice(0, 5));
-    }
-
-    if (transport.state !== "started") {
-      transport.start();
-      setPlaying(true);
     }
   };
 
@@ -462,7 +504,7 @@ export function VoiceRemixStudio() {
   const affectedSectionIds = new Set(proposedMoves.map((operation) => operation.targetId));
 
   return (
-    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount}>
+    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"}>
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
@@ -534,7 +576,7 @@ export function VoiceRemixStudio() {
               </div>
               <div className="diff-footer">
                 <div>{proposal.assumptions.map((assumption) => <span key={assumption}>Assumption · {assumption}</span>)}</div>
-                <div><button type="button" onClick={discardProposal}>Discard</button><div className="audition-switch" role="group" aria-label="Audition version"><button className={!auditioningProposal ? "active" : ""} type="button" aria-pressed={!auditioningProposal} onClick={() => setProposalAudition(false)}>Current</button><button className={auditioningProposal ? "active" : ""} type="button" aria-pressed={auditioningProposal} onClick={() => setProposalAudition(true)} disabled={!selectedProposalOperations.length}>Proposed</button></div><button className="apply-selected" type="button" onClick={applyProposal} disabled={!selectedProposalOperations.length}>Apply selected</button></div>
+                <div><button type="button" onClick={discardProposal} disabled={audioSwitching}>Discard</button><div className="audition-switch" role="group" aria-label="Audition version"><button className={!auditioningProposal ? "active" : ""} type="button" aria-pressed={!auditioningProposal} onClick={() => setProposalAudition(false)} disabled={audioSwitching}>Current</button><button className={auditioningProposal ? "active" : ""} type="button" aria-pressed={auditioningProposal} onClick={() => setProposalAudition(true)} disabled={audioSwitching || !selectedProposalOperations.length}>{audioSwitching ? "Switching…" : "Proposed"}</button></div><button className="apply-selected" type="button" onClick={applyProposal} disabled={audioSwitching || !selectedProposalOperations.length}>Apply selected</button></div>
               </div>
             </section>
           )}
@@ -550,7 +592,7 @@ export function VoiceRemixStudio() {
             <div className="song-wave" aria-hidden="true">
               {Array.from({ length: 54 }, (_, index) => <i key={index} className={index / 54 * TOTAL_BARS < position ? "passed" : ""} style={{ height: `${18 + ((index * 23) % 62)}%` }} />)}
             </div>
-            <button className={`hero-play ${playing ? "playing" : ""}`} onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button>
+            <button className={`hero-play ${playing ? "playing" : ""}`} onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button>
           </section>
 
           <div className="editor-layout">
@@ -607,7 +649,7 @@ export function VoiceRemixStudio() {
 
         <footer className="player-bar">
           <div className="mini-song"><CoverArt mini /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>
