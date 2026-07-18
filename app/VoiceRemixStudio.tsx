@@ -36,6 +36,16 @@ const BAR_PX = 58;
 const TOTAL_BARS = 59;
 const AUDIO_DURATION = 119.4;
 
+function CoverArt({ mini = false }: { mini?: boolean }) {
+  return (
+    <div className={`cover-art${mini ? " mini-cover" : ""}`} aria-hidden="true">
+      <div className="cover-orbit one" />
+      <div className="cover-orbit two" />
+      <i>VR</i>
+    </div>
+  );
+}
+
 function sectionAt(project: Project, bar: number) {
   return [...project.sections]
     .reverse()
@@ -530,7 +540,7 @@ export function VoiceRemixStudio() {
           )}
 
           <section className="song-card">
-            <div className="cover-art"><div className="cover-orbit one" /><div className="cover-orbit two" /><i>VR</i></div>
+            <CoverArt />
             <div className="song-info">
               <span className={`overline ${auditioningProposal ? "audition-label" : ""}`}>{auditioningProposal ? "AUDITIONING PROPOSED · NOT APPLIED" : "CURRENT ARRANGEMENT"}</span>
               <h2>Neon Pulse Loop</h2>
@@ -596,7 +606,7 @@ export function VoiceRemixStudio() {
         </div>
 
         <footer className="player-bar">
-          <div className="mini-song"><div className="mini-cover" /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
+          <div className="mini-song"><CoverArt mini /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
           <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
