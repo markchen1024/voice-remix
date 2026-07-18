@@ -64,3 +64,17 @@ test("current mixer state restores every player", () => {
   assert.equal(status.mutedPlayerCount, 0);
   assert.ok(Object.values(players).flat().every((item) => !item.mute));
 });
+
+test("section energy is included in each scheduled player's audible gain", () => {
+  const project = {
+    version: 1,
+    totalBars: 4,
+    bpm: 118,
+    sections: [],
+    tracks: [track("drums", true, 1.2)],
+  };
+  const players = { drums: [player()] };
+  players.drums[0].mixGain = 0.8;
+  syncProjectMixer(project, players, (gain) => gain);
+  assert.equal(players.drums[0].volume.value, 0.96);
+});

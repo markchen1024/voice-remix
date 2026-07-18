@@ -16,7 +16,7 @@ export function sourceStartBar(section: Section) {
 
 export function arrangementSignature(project: Project) {
   return project.sections
-    .map((section) => `${section.id}:${sourceStartBar(section)}>${section.startBar}:${section.lengthBars}`)
+    .map((section) => `${section.id}:${sourceStartBar(section)}>${section.startBar}:${section.lengthBars}:${section.energy}`)
     .join("|");
 }
 

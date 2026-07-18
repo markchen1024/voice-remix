@@ -3,8 +3,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, sourceStartBar } from "./audio-arrangement";
-import { EMPTY_MIXER_STATUS, syncProjectMixer, type MixerStatus } from "./audio-mixer";
-import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
+import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
+import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
 
@@ -35,6 +35,7 @@ const INITIAL_PROJECT: Project = {
 const BAR_PX = 58;
 const TOTAL_BARS = 59;
 const AUDIO_DURATION = 119.4;
+type ScheduledPlayer = Tone.Player & { mixGain: number };
 
 function CoverArt({ mini = false }: { mini?: boolean }) {
   return (
@@ -114,7 +115,7 @@ export function VoiceRemixStudio() {
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
   const [auditioningProposal, setAuditioningProposal] = useState(false);
   const [planning, setPlanning] = useState(false);
-  const [listening, setListening] = useState(false);
+  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
   const [audioSwitching, setAudioSwitching] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
@@ -126,15 +127,16 @@ export function VoiceRemixStudio() {
   const history = useRef(createProjectHistory<Project>());
   const playingRef = useRef(false);
   const audioTransition = useRef(0);
+  const mediaRecorder = useRef<MediaRecorder | null>(null);
+  const microphoneStream = useRef<MediaStream | null>(null);
+  const voiceChunks = useRef<Blob[]>([]);
   const scheduled = useRef(false);
   const audioSetup = useRef<Promise<void> | null>(null);
-  const players = useRef<Partial<Record<TrackId, Tone.Player[]>>>({});
+  const players = useRef<Partial<Record<TrackId, ScheduledPlayer[]>>>({});
   const buffers = useRef<Partial<Record<TrackId, Tone.ToneAudioBuffer>>>({});
   const scheduledArrangement = useRef("");
-  const audibleProject = useMemo(
-    () => auditioningProposal && proposal ? applyOperations(project, proposal.operations) : project,
-    [auditioningProposal, project, proposal],
-  );
+  const proposedProject = useMemo(() => proposal ? applyOperations(project, proposal.operations) : null, [project, proposal]);
+  const audibleProject = auditioningProposal && proposedProject ? proposedProject : project;
 
   useEffect(() => {
     projectRef.current = project;
@@ -162,6 +164,8 @@ export function VoiceRemixStudio() {
     Object.values(buffers.current).forEach((buffer) => buffer.dispose());
     players.current = {};
     buffers.current = {};
+    if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
+    microphoneStream.current?.getTracks().forEach((track) => track.stop());
   }, []);
 
   function disposeArrangementPlayers() {
@@ -208,8 +212,10 @@ export function VoiceRemixStudio() {
     nextProject.tracks.forEach((track) => {
       const buffer = buffers.current[track.id]!;
       players.current[track.id] = segments.map((segment) => {
-        const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination();
-        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
+        const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination() as ScheduledPlayer;
+        const section = nextProject.sections.find((item) => item.id === segment.sectionId);
+        player.mixGain = sectionEnergyGain(section?.energy ?? 1);
+        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level * player.mixGain));
         player.mute = !track.enabled;
         player.sync().start(segment.destinationStartSeconds, segment.sourceStartSeconds, segment.durationSeconds);
         return player;
@@ -370,9 +376,8 @@ export function VoiceRemixStudio() {
     commit(next, `Moved ${section.label}`, `${delta > 0 ? "+" : ""}${delta} bar${Math.abs(delta) === 1 ? "" : "s"}`);
   };
 
-  const runCommand = async (event: FormEvent) => {
-    event.preventDefault();
-    const input = command.trim();
+  const createProposal = async (rawInput: string) => {
+    const input = rawInput.trim();
     if (!input || planning) return;
     if (auditioningProposal) {
       await activateAudioProject(project);
@@ -405,6 +410,11 @@ export function VoiceRemixStudio() {
     }
     setPlanning(false);
     setCommand("");
+  };
+
+  const runCommand = async (event: FormEvent) => {
+    event.preventDefault();
+    await createProposal(command);
   };
 
   const toggleProposalOperation = async (operationId: string) => {
@@ -460,26 +470,84 @@ export function VoiceRemixStudio() {
     setAuditioningProposal(false);
   };
 
-  const startListening = () => {
-    type Recognition = {
-      lang: string;
-      interimResults: boolean;
-      onresult: (event: { results: ArrayLike<{ 0: { transcript: string } }> }) => void;
-      onend: () => void;
-      start: () => void;
-    };
-    const SpeechRecognition = (window as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setActivity((items) => [{ title: "Microphone unavailable", detail: "Use Chrome voice input or type a command below", time: "NOW" }, ...items].slice(0, 5));
+  const transcribeVoiceCommand = async (blob: Blob) => {
+    setVoiceState("transcribing");
+    try {
+      const contentType = blob.type.split(";")[0] || "audio/webm";
+      const extension = contentType.includes("ogg") ? "ogg" : contentType.includes("mp4") ? "m4a" : "webm";
+      const formData = new FormData();
+      formData.append("audio", blob, `voice-command.${extension}`);
+      const response = await fetch("/api/transcribe", { method: "POST", body: formData });
+      if (!response.ok) throw new Error(`Transcription failed with ${response.status}`);
+      const text = ((await response.json()) as { text?: string }).text?.trim();
+      if (!text) throw new Error("Transcription was empty");
+      setCommand(text);
+      setActivity((items) => [{ title: "Voice command", detail: `“${text}”`, time: "NOW" }, ...items].slice(0, 5));
+      setVoiceState("idle");
+      await createProposal(text);
+    } catch (error) {
+      console.error("Voice command failed", error);
+      setVoiceState("idle");
+      setActivity((items) => [{ title: "Voice command failed", detail: "Check microphone permission and OpenAI API access", time: "NOW" }, ...items].slice(0, 5));
+    }
+  };
+
+  const toggleVoiceCapture = async () => {
+    if (voiceState === "recording") {
+      if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
       return;
     }
-    const recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN";
-    recognition.interimResults = false;
-    recognition.onresult = (event) => setCommand(event.results[0][0].transcript);
-    recognition.onend = () => setListening(false);
-    setListening(true);
-    recognition.start();
+    if (voiceState !== "idle" || planning || audioSwitching) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setActivity((items) => [{ title: "Microphone unavailable", detail: "This browser cannot record a voice command", time: "NOW" }, ...items].slice(0, 5));
+      return;
+    }
+
+    try {
+      ++audioTransition.current;
+      const transport = Tone.getTransport();
+      if (transport.state === "started") transport.pause();
+      setPlaybackState(false);
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      microphoneStream.current = stream;
+      voiceChunks.current = [];
+      const supportedType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, supportedType ? { mimeType: supportedType } : undefined);
+      mediaRecorder.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunks.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        microphoneStream.current?.getTracks().forEach((track) => track.stop());
+        microphoneStream.current = null;
+        mediaRecorder.current = null;
+        setVoiceState("idle");
+        setActivity((items) => [{ title: "Recording failed", detail: "The microphone stream stopped unexpectedly", time: "NOW" }, ...items].slice(0, 5));
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(voiceChunks.current, { type: recorder.mimeType || "audio/webm" });
+        microphoneStream.current?.getTracks().forEach((track) => track.stop());
+        microphoneStream.current = null;
+        mediaRecorder.current = null;
+        voiceChunks.current = [];
+        if (blob.size === 0) {
+          setVoiceState("idle");
+          setActivity((items) => [{ title: "No voice detected", detail: "Try recording the command again", time: "NOW" }, ...items].slice(0, 5));
+          return;
+        }
+        void transcribeVoiceCommand(blob);
+      };
+      recorder.start();
+      setVoiceState("recording");
+      setActivity((items) => [{ title: "Listening", detail: "Say the edit, then click the microphone again", time: "NOW" }, ...items].slice(0, 5));
+    } catch (error) {
+      console.error("Microphone access failed", error);
+      microphoneStream.current?.getTracks().forEach((track) => track.stop());
+      microphoneStream.current = null;
+      setVoiceState("idle");
+      setActivity((items) => [{ title: "Microphone permission needed", detail: "Allow microphone access and try again", time: "NOW" }, ...items].slice(0, 5));
+    }
   };
 
   const exportProject = () => {
@@ -500,11 +568,15 @@ export function VoiceRemixStudio() {
   const active = sectionAt(project, Math.floor(position));
   const barLabels = useMemo(() => Array.from({ length: TOTAL_BARS }, (_, index) => index + 1), []);
   const selectedProposalOperations = proposal?.operations.filter((operation) => operation.selected) ?? [];
-  const proposedMoves = selectedProposalOperations.filter((operation): operation is MoveSectionOperation => operation.action === "move_section");
-  const affectedSectionIds = new Set(proposedMoves.map((operation) => operation.targetId));
+  const proposedSectionChanges = proposedProject ? proposedProject.sections.filter((section) => {
+    const current = project.sections.find((item) => item.id === section.id);
+    return current && (current.startBar !== section.startBar || current.lengthBars !== section.lengthBars);
+  }) : [];
+  const affectedSectionIds = new Set(proposedSectionChanges.map((section) => section.id));
+  const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
 
   return (
-    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"}>
+    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState}>
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
@@ -541,15 +613,15 @@ export function VoiceRemixStudio() {
             <h1>What should change?</h1>
             <p>Describe the feeling, structure, or instrument you want to hear.</p>
             <form className="prompt-box" onSubmit={runCommand}>
-              <button type="button" className={`voice-button ${listening ? "listening" : ""}`} onClick={startListening} aria-label="Start voice input">●</button>
-              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Try “bring the chorus in earlier and make the drums hit harder”" aria-label="Arrangement command" disabled={planning} />
-              <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning}><span>{planning ? "Planning…" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
+              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceState === "recording" ? "Stop and transcribe voice command" : "Start voice command"} title={voiceState === "recording" ? "Stop recording" : "Speak an edit"} disabled={voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "■" : voiceState === "transcribing" ? "✦" : "🎙"}</button>
+              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState === "transcribing"} />
+              <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Planning…" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
                 {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
-              <small>{listening ? "Listening…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "GPT-5.6 planner · local fallback"}</small>
+              <small>{voiceState === "recording" ? "Listening · click the mic again to send" : voiceState === "transcribing" ? "OpenAI is transcribing your command…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "Voice + GPT-5.6 planner · local fallback"}</small>
             </div>
           </section>
 
@@ -618,13 +690,13 @@ export function VoiceRemixStudio() {
                     </div>
                     <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
-                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} project={project} nearSilent={track.nearSilent} />
-                      {project.sections.map((section) => (
+                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} project={audibleProject} nearSilent={track.nearSilent} />
+                      {renderedSections.map((section) => (
                         <button key={`${track.id}-${section.id}`} className={`clip ${selectedSection === section.id ? "selected" : ""} ${affectedSectionIds.has(section.id) ? "is-affected" : ""}`} style={{ left: section.startBar * BAR_PX + 3, width: section.lengthBars * BAR_PX - 6, "--clip": track.color } as React.CSSProperties} onClick={() => setSelectedSection(section.id)} title={`Select ${section.label}`}>
                           <span>{section.label}</span>
                         </button>
                       ))}
-                      {proposedMoves.map((move) => <div className="ghost-clip" key={`${track.id}-${move.id}-ghost`} style={{ left: move.afterStartBar * BAR_PX + 3, width: move.lengthBars * BAR_PX - 6 }}><span>PROPOSED · {move.targetLabel}</span></div>)}
+                      {!auditioningProposal && proposedSectionChanges.map((section) => <div className="ghost-clip" key={`${track.id}-${section.id}-ghost`} style={{ left: section.startBar * BAR_PX + 3, width: Math.max(BAR_PX / 2, section.lengthBars * BAR_PX - 6) }}><span>PROPOSED · {section.label}</span></div>)}
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
                     </div>
                   </div>

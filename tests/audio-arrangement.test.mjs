@@ -24,12 +24,14 @@ test("moved sections keep their source audio while changing playback destination
   assert.equal(chorus.durationSeconds, 18);
 });
 
-test("arrangement signature changes only when audio placement changes", () => {
+test("arrangement signature changes for audible placement or energy changes", () => {
   const before = arrangementSignature(project);
   const gainOnly = { ...project, tracks: [{ id: "drums", level: 1.25 }] };
   const moved = { ...project, sections: project.sections.map((section) => section.id === "chorus-2" ? { ...section, startBar: 39 } : section) };
+  const energized = { ...project, sections: project.sections.map((section) => section.id === "chorus-2" ? { ...section, energy: 1 } : section) };
   assert.equal(arrangementSignature(gainOnly), before);
   assert.notEqual(arrangementSignature(moved), before);
+  assert.notEqual(arrangementSignature(energized), before);
 });
 
 test("audition starts one bar before the earliest selected section move", () => {

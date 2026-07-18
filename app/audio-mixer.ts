@@ -2,6 +2,7 @@ import type { Project, TrackId } from "./edit-transactions";
 
 export type MixerPlayer = {
   mute: boolean;
+  mixGain?: number;
   volume: { value: number };
 };
 
@@ -29,6 +30,10 @@ export const EMPTY_MIXER_STATUS: MixerStatus = {
   tracks: [],
 };
 
+export function sectionEnergyGain(energy: number) {
+  return 0.75 + Math.max(0.1, Math.min(1, energy)) * 0.25;
+}
+
 export function syncProjectMixer<TPlayer extends MixerPlayer>(
   project: Project,
   players: MixerPlayerBank<TPlayer>,
@@ -37,7 +42,7 @@ export function syncProjectMixer<TPlayer extends MixerPlayer>(
   const tracks = project.tracks.map((track) => {
     const trackPlayers = players[track.id] ?? [];
     for (const player of trackPlayers) {
-      player.volume.value = gainToDb(Math.max(0.001, track.level));
+      player.volume.value = gainToDb(Math.max(0.001, track.level * (player.mixGain ?? 1)));
       // Tone implements mute by setting volume to -Infinity, so volume must be
       // restored first and mute applied last.
       player.mute = !track.enabled;

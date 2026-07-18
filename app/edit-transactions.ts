@@ -169,6 +169,7 @@ export function createLocalTransaction(input: string, project: Project): EditTra
       selected: true,
     });
     assumptions.push(`${targetChorus.label} is the intended chorus reference.`);
+    assumptions.push("Ripple edit shortens the preceding section at the new boundary and shifts later sections by the same bar delta.");
   }
 
   const protectionClauses = input

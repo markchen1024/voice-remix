@@ -14,7 +14,7 @@ const project = {
 test("AI plans are normalized against the real project and protected tracks", () => {
   const transaction = normalizeMusicEditPlan("move it earlier", project, {
     summary: "Move the ending and strengthen the drums",
-    assumptions: [],
+    assumptions: ["The move does not reorder or trim other sections."],
     protectedTargets: ["bass"],
     operations: [
       { action: "move_section", targetId: "chorus-2", barsEarlier: 4, explanation: "Earlier payoff" },
@@ -30,6 +30,7 @@ test("AI plans are normalized against the real project and protected tracks", ()
   assert.equal(transaction.operations[0].afterStartBar, 40);
   assert.equal(transaction.operations[1].afterLevel, 1.2);
   assert.deepEqual(transaction.protectedTargets, ["BASS"]);
+  assert.deepEqual(transaction.assumptions, ["Ripple edit: shorten the preceding section at the new boundary and shift later sections by the same bar delta."]);
   assert.equal(project.sections[0].startBar, 44);
 });
 
