@@ -7,6 +7,7 @@ import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStat
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
+import { connectRealtimeTranscription, type RealtimeTranscriptionClient } from "./realtime-transcription";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -116,7 +117,7 @@ export function VoiceRemixStudio() {
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
   const [auditioningProposal, setAuditioningProposal] = useState(false);
   const [planning, setPlanning] = useState(false);
-  const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
+  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "recording" | "transcribing">("idle");
   const [audioSwitching, setAudioSwitching] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
@@ -131,6 +132,9 @@ export function VoiceRemixStudio() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const microphoneStream = useRef<MediaStream | null>(null);
   const voiceChunks = useRef<Blob[]>([]);
+  const realtimeTranscription = useRef<RealtimeTranscriptionClient | null>(null);
+  const voiceCommandHandler = useRef<(text: string) => void>(() => undefined);
+  const voiceDuckingLevel = useRef<number | null>(null);
   const scheduled = useRef(false);
   const audioSetup = useRef<Promise<void> | null>(null);
   const players = useRef<Partial<Record<TrackId, ScheduledPlayer[]>>>({});
@@ -169,6 +173,7 @@ export function VoiceRemixStudio() {
     buffers.current = {};
     if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
     microphoneStream.current?.getTracks().forEach((track) => track.stop());
+    realtimeTranscription.current?.close();
   }, []);
 
   function disposeArrangementPlayers() {
@@ -245,6 +250,17 @@ export function VoiceRemixStudio() {
   function setPlaybackState(nextPlaying: boolean) {
     playingRef.current = nextPlaying;
     setPlaying(nextPlaying);
+  }
+
+  function setVoiceDucking(active: boolean) {
+    const destination = Tone.getDestination();
+    if (active) {
+      if (voiceDuckingLevel.current === null) voiceDuckingLevel.current = destination.volume.value;
+      destination.volume.rampTo(voiceDuckingLevel.current - 12, 0.08);
+    } else if (voiceDuckingLevel.current !== null) {
+      destination.volume.rampTo(voiceDuckingLevel.current, 0.12);
+      voiceDuckingLevel.current = null;
+    }
   }
 
   const setupAudio = async () => {
@@ -494,6 +510,17 @@ export function VoiceRemixStudio() {
     setAuditioningProposal(false);
   };
 
+  useEffect(() => {
+    voiceCommandHandler.current = (text: string) => {
+      const transcript = text.trim();
+      setVoiceDucking(false);
+      setVoiceState("idle");
+      setCommand(transcript);
+      setActivity((items) => [{ title: "Realtime voice command", detail: `“${transcript}”`, time: "NOW" }, ...items].slice(0, 5));
+      void createProposal(transcript);
+    };
+  });
+
   const transcribeVoiceCommand = async (blob: Blob) => {
     setVoiceState("transcribing");
     try {
@@ -506,7 +533,7 @@ export function VoiceRemixStudio() {
       const text = ((await response.json()) as { text?: string }).text?.trim();
       if (!text) throw new Error("Transcription was empty");
       setCommand(text);
-      setActivity((items) => [{ title: "Voice command", detail: `“${text}”`, time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: "Voice command fallback", detail: `“${text}”`, time: "NOW" }, ...items].slice(0, 5));
       setVoiceState("idle");
       await createProposal(text);
     } catch (error) {
@@ -516,24 +543,15 @@ export function VoiceRemixStudio() {
     }
   };
 
-  const toggleVoiceCapture = async () => {
-    if (voiceState === "recording") {
-      if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
-      return;
-    }
-    if (voiceState !== "idle" || planning || audioSwitching) return;
+  const startFallbackVoiceCapture = async () => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setActivity((items) => [{ title: "Microphone unavailable", detail: "This browser cannot record a voice command", time: "NOW" }, ...items].slice(0, 5));
       return;
     }
 
     try {
-      ++audioTransition.current;
-      const transport = Tone.getTransport();
-      if (transport.state === "started") transport.pause();
-      setPlaybackState(false);
-
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
+      setVoiceDucking(true);
       microphoneStream.current = stream;
       voiceChunks.current = [];
       const supportedType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/webm"].find((type) => MediaRecorder.isTypeSupported(type));
@@ -546,6 +564,7 @@ export function VoiceRemixStudio() {
         microphoneStream.current?.getTracks().forEach((track) => track.stop());
         microphoneStream.current = null;
         mediaRecorder.current = null;
+        setVoiceDucking(false);
         setVoiceState("idle");
         setActivity((items) => [{ title: "Recording failed", detail: "The microphone stream stopped unexpectedly", time: "NOW" }, ...items].slice(0, 5));
       };
@@ -555,6 +574,7 @@ export function VoiceRemixStudio() {
         microphoneStream.current = null;
         mediaRecorder.current = null;
         voiceChunks.current = [];
+        setVoiceDucking(false);
         if (blob.size === 0) {
           setVoiceState("idle");
           setActivity((items) => [{ title: "No voice detected", detail: "Try recording the command again", time: "NOW" }, ...items].slice(0, 5));
@@ -564,13 +584,80 @@ export function VoiceRemixStudio() {
       };
       recorder.start();
       setVoiceState("recording");
-      setActivity((items) => [{ title: "Listening", detail: "Say the edit, then click the microphone again", time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: "Fallback listening", detail: "Realtime unavailable · recording one command", time: "NOW" }, ...items].slice(0, 5));
     } catch (error) {
       console.error("Microphone access failed", error);
       microphoneStream.current?.getTracks().forEach((track) => track.stop());
       microphoneStream.current = null;
+      setVoiceDucking(false);
       setVoiceState("idle");
       setActivity((items) => [{ title: "Microphone permission needed", detail: "Allow microphone access and try again", time: "NOW" }, ...items].slice(0, 5));
+    }
+  };
+
+  const startRealtimeVoiceCapture = async () => {
+    setVoiceState("connecting");
+    let client = realtimeTranscription.current;
+    if (!client) {
+      client = await connectRealtimeTranscription({
+        onDelta: (transcript) => setCommand(transcript),
+        onCompleted: (transcript) => voiceCommandHandler.current(transcript),
+        onError: (error) => {
+          console.error("Realtime voice command failed", error);
+          realtimeTranscription.current?.close();
+          realtimeTranscription.current = null;
+          setVoiceDucking(false);
+          setVoiceState("idle");
+          setActivity((items) => [{ title: "Realtime voice failed", detail: "Use the microphone again or type the command", time: "NOW" }, ...items].slice(0, 5));
+        },
+      });
+      realtimeTranscription.current = client;
+    }
+
+    setCommand("");
+    setVoiceDucking(true);
+    client.startTurn();
+    setVoiceState("recording");
+    setActivity((items) => [{ title: "Realtime listening", detail: "Live transcript is streaming · click again to send", time: "NOW" }, ...items].slice(0, 5));
+  };
+
+  const toggleVoiceCapture = async () => {
+    if (voiceState === "recording") {
+      if (realtimeTranscription.current) {
+        setVoiceDucking(false);
+        setVoiceState("transcribing");
+        try {
+          realtimeTranscription.current.stopTurn();
+        } catch (error) {
+          console.error("Realtime voice stop failed", error);
+          realtimeTranscription.current.close();
+          realtimeTranscription.current = null;
+          setVoiceState("idle");
+        }
+      } else if (mediaRecorder.current?.state === "recording") {
+        mediaRecorder.current.stop();
+      }
+      return;
+    }
+    if (voiceState !== "idle" || planning || audioSwitching) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
+      await startFallbackVoiceCapture();
+      return;
+    }
+
+    try {
+      await startRealtimeVoiceCapture();
+    } catch (error) {
+      console.warn("Realtime voice unavailable; using upload fallback", error);
+      realtimeTranscription.current?.close();
+      realtimeTranscription.current = null;
+      setVoiceDucking(false);
+      setVoiceState("idle");
+      if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
+        setActivity((items) => [{ title: "Microphone permission needed", detail: "Allow microphone access and try again", time: "NOW" }, ...items].slice(0, 5));
+        return;
+      }
+      await startFallbackVoiceCapture();
     }
   };
 
@@ -598,6 +685,7 @@ export function VoiceRemixStudio() {
   }) : [];
   const affectedSectionIds = new Set(proposedSectionChanges.map((section) => section.id));
   const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
+  const voiceButtonLabel = voiceState === "recording" ? "Stop and transcribe voice command" : voiceState === "connecting" ? "Connecting realtime voice" : voiceState === "transcribing" ? "Finalizing voice command" : "Start voice command";
 
   return (
     <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
@@ -637,15 +725,15 @@ export function VoiceRemixStudio() {
             <h1>What should change?</h1>
             <p>Describe the feeling, structure, or instrument you want to hear.</p>
             <form className="prompt-box" onSubmit={runCommand}>
-              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceState === "recording" ? "Stop and transcribe voice command" : "Start voice command"} title={voiceState === "recording" ? "Stop recording" : "Speak an edit"} disabled={voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "■" : voiceState === "transcribing" ? "✦" : "🎙"}</button>
-              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState === "transcribing"} />
+              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceState === "recording" ? "Stop recording" : "Speak an edit"} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "■" : voiceState !== "idle" ? "✦" : "🎙"}</button>
+              <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState !== "idle"} />
               <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Planning…" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
                 {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
-              <small>{voiceState === "recording" ? "Listening · click the mic again to send" : voiceState === "transcribing" ? "OpenAI is transcribing your command…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "Voice + GPT-5.6 planner · local fallback"}</small>
+              <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · transcript appears as you speak" : voiceState === "transcribing" ? "Finalizing the voice command…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "OpenAI Realtime voice + GPT-5.6 planner"}</small>
             </div>
           </section>
 
