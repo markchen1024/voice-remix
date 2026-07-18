@@ -4,6 +4,7 @@ import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, 
 import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
+import { createEditorContext } from "./editor-context";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
@@ -436,7 +437,16 @@ export function VoiceRemixStudio() {
     setPlanning(true);
     let nextProposal: EditTransaction | null = null;
     try {
-      const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project }) });
+      const context = createEditorContext(project, {
+        playheadBar: positionRef.current,
+        playing: playingRef.current,
+        auditioningProposal,
+        selectedSectionId: selectedSection,
+        proposal,
+        canUndo,
+        canRedo,
+      });
+      const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project, context }) });
       if (response.ok) nextProposal = ((await response.json()) as { transaction: EditTransaction }).transaction;
     } catch {
       // The local planner keeps the demo usable offline and when the API is unavailable.

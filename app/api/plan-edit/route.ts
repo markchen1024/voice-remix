@@ -1,4 +1,5 @@
 import { createAiTransaction } from "../../ai-planner";
+import { sanitizeEditorContext } from "../../editor-context";
 import type { Project } from "../../edit-transactions";
 
 export async function POST(request: Request) {
@@ -7,11 +8,13 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json() as { request?: unknown; project?: unknown };
+    const body = await request.json() as { request?: unknown; project?: unknown; context?: unknown };
     if (typeof body.request !== "string" || body.request.trim().length < 2 || !body.project || typeof body.project !== "object") {
       return Response.json({ code: "invalid_request" }, { status: 400 });
     }
-    const transaction = await createAiTransaction(body.request.trim().slice(0, 500), body.project as Project);
+    const project = body.project as Project;
+    const context = sanitizeEditorContext(project, body.context);
+    const transaction = await createAiTransaction(body.request.trim().slice(0, 500), project, context);
     if (!transaction) return Response.json({ code: "no_supported_edits" }, { status: 422 });
     return Response.json({ transaction });
   } catch (error) {
