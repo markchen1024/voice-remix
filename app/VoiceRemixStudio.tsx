@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, sourceStartBar } from "./audio-arrangement";
+import { EMPTY_MIXER_STATUS, syncProjectMixer, type MixerStatus } from "./audio-mixer";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
@@ -107,6 +108,7 @@ export function VoiceRemixStudio() {
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
+  const [mixerStatus, setMixerStatus] = useState<MixerStatus>(EMPTY_MIXER_STATUS);
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
@@ -124,12 +126,7 @@ export function VoiceRemixStudio() {
   useEffect(() => {
     projectRef.current = project;
     Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
-    audibleProject.tracks.forEach((track) => {
-      players.current[track.id]?.forEach((player) => {
-        player.mute = !track.enabled;
-        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
-      });
-    });
+    applyMixerState(audibleProject);
   }, [audibleProject, project]);
 
   useEffect(() => {
@@ -161,12 +158,19 @@ export function VoiceRemixStudio() {
   }
 
   function applyMixerState(nextProject: Project) {
-    nextProject.tracks.forEach((track) => {
-      players.current[track.id]?.forEach((player) => {
-        player.mute = !track.enabled;
-        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
-      });
-    });
+    setMixerStatus(syncProjectMixer(nextProject, players.current, Tone.gainToDb));
+  }
+
+  function resetAudioRuntime() {
+    const transport = Tone.getTransport();
+    transport.stop();
+    transport.cancel();
+    disposeArrangementPlayers();
+    Object.values(buffers.current).forEach((buffer) => buffer.dispose());
+    buffers.current = {};
+    scheduledArrangement.current = "";
+    setMixerStatus(EMPTY_MIXER_STATUS);
+    Tone.setContext(new Tone.Context({ latencyHint: "playback" }), true);
   }
 
   function seekToBar(bar: number) {
@@ -195,8 +199,8 @@ export function VoiceRemixStudio() {
       const buffer = buffers.current[track.id]!;
       players.current[track.id] = segments.map((segment) => {
         const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination();
-        player.mute = !track.enabled;
         player.volume.value = Tone.gainToDb(Math.max(0.001, track.level));
+        player.mute = !track.enabled;
         player.sync().start(segment.destinationStartSeconds, segment.sourceStartSeconds, segment.durationSeconds);
         return player;
       });
@@ -210,15 +214,20 @@ export function VoiceRemixStudio() {
 
   const setupAudio = async () => {
     if (scheduled.current) return;
-    audioSetup.current ??= (async () => {
-      const loadedBuffers = await Promise.all(INITIAL_PROJECT.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
-      loadedBuffers.forEach(([trackId, buffer]) => { buffers.current[trackId] = buffer; });
-      const transport = Tone.getTransport();
-      transport.loop = true;
-      transport.loopEnd = AUDIO_DURATION;
-      scheduleAudioArrangement(projectRef.current, true);
-      scheduled.current = true;
-    })();
+    if (!audioSetup.current) {
+      resetAudioRuntime();
+      const contextStarted = Tone.start();
+      audioSetup.current = (async () => {
+        await contextStarted;
+        const loadedBuffers = await Promise.all(INITIAL_PROJECT.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
+        loadedBuffers.forEach(([trackId, buffer]) => { buffers.current[trackId] = buffer; });
+        const transport = Tone.getTransport();
+        transport.loop = true;
+        transport.loopEnd = AUDIO_DURATION;
+        scheduleAudioArrangement(projectRef.current, true);
+        scheduled.current = true;
+      })();
+    }
     try {
       await audioSetup.current;
     } catch (error) {
@@ -228,8 +237,8 @@ export function VoiceRemixStudio() {
   };
 
   const togglePlay = async () => {
-    await Tone.start();
     await setupAudio();
+    await Tone.start();
     const transport = Tone.getTransport();
     if (transport.state === "started") {
       transport.pause();
@@ -359,8 +368,8 @@ export function VoiceRemixStudio() {
 
   const setProposalAudition = async (proposed: boolean) => {
     if (!proposal || proposed === auditioningProposal) return;
-    await Tone.start();
     await setupAudio();
+    await Tone.start();
     const transport = Tone.getTransport();
 
     if (!proposed) {
@@ -443,7 +452,7 @@ export function VoiceRemixStudio() {
   const affectedSectionIds = new Set(proposedMoves.map((operation) => operation.targetId));
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount}>
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">

@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { syncProjectMixer } from "../app/audio-mixer.ts";
+
+const track = (id, enabled, level = 1) => ({ id, label: id.toUpperCase(), role: "test", color: "#fff", enabled, level, audioUrl: "", peaksUrl: "", meanDb: -20, maxDb: -3 });
+const player = () => {
+  let unmutedVolume = 0;
+  return {
+    volume: { value: 0 },
+    get mute() {
+      return this.volume.value === -Infinity;
+    },
+    set mute(mute) {
+      if (!this.mute && mute) {
+        unmutedVolume = this.volume.value;
+        this.volume.value = -Infinity;
+      } else if (this.mute && !mute) {
+        this.volume.value = unmutedVolume;
+      }
+    },
+  };
+};
+
+test("proposal mixer state reaches every scheduled player", () => {
+  const project = {
+    version: 1,
+    totalBars: 59,
+    bpm: 118,
+    sections: [],
+    tracks: [
+      track("drums", true),
+      track("percussion", false),
+      track("bass", true, 1.25),
+      track("synth", false),
+      track("fx", false),
+    ],
+  };
+  const players = Object.fromEntries(project.tracks.map((item) => [item.id, Array.from({ length: 9 }, player)]));
+  const status = syncProjectMixer(project, players, (gain) => gain * 10);
+
+  assert.equal(status.ready, true);
+  assert.equal(status.playerCount, 45);
+  assert.equal(status.mutedPlayerCount, 27);
+  assert.ok(players.percussion.every((item) => item.mute));
+  assert.ok(players.synth.every((item) => item.mute));
+  assert.ok(players.fx.every((item) => item.mute));
+  assert.ok(players.drums.every((item) => !item.mute));
+  assert.ok(players.bass.every((item) => !item.mute));
+  assert.ok(players.bass.every((item) => item.volume.value === 12.5));
+});
+
+test("current mixer state restores every player", () => {
+  const project = {
+    version: 1,
+    totalBars: 59,
+    bpm: 118,
+    sections: [],
+    tracks: [track("drums", true), track("percussion", true), track("bass", true), track("synth", true), track("fx", true)],
+  };
+  const players = Object.fromEntries(project.tracks.map((item) => [item.id, Array.from({ length: 2 }, player)]));
+  Object.values(players).flat().forEach((item) => { item.mute = true; });
+  const status = syncProjectMixer(project, players, (gain) => gain);
+
+  assert.equal(status.mutedPlayerCount, 0);
+  assert.ok(Object.values(players).flat().every((item) => !item.mute));
+});
