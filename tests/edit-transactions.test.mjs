@@ -54,3 +54,28 @@ test("solo commands create deterministic mute operations", () => {
   assert.equal(next.tracks.find((item) => item.id === "bass").enabled, true);
   assert.equal(next.tracks.find((item) => item.id === "synth").enabled, false);
 });
+
+test("moving a section earlier ripples later sections and trims the predecessor", () => {
+  const arrangedProject = {
+    ...project,
+    sections: [
+      { id: "build-1", kind: "verse", label: "Build", sourceStartBar: 37, startBar: 37, lengthBars: 7, energy: 0.7 },
+      { id: "chorus-2", kind: "chorus", label: "Final Chorus", sourceStartBar: 44, startBar: 44, lengthBars: 9, energy: 0.9 },
+      { id: "outro-1", kind: "outro", label: "Outro", sourceStartBar: 53, startBar: 53, lengthBars: 6, energy: 0.3 },
+    ],
+  };
+  const next = applyOperations(arrangedProject, [{
+    id: "move-final",
+    action: "move_section",
+    targetId: "chorus-2",
+    targetLabel: "Final Chorus",
+    beforeStartBar: 44,
+    afterStartBar: 40,
+    lengthBars: 9,
+    explanation: "Bring the final chorus earlier.",
+    selected: true,
+  }]);
+  assert.equal(next.sections.find((section) => section.id === "build-1").lengthBars, 3);
+  assert.equal(next.sections.find((section) => section.id === "chorus-2").startBar, 40);
+  assert.equal(next.sections.find((section) => section.id === "outro-1").startBar, 49);
+});

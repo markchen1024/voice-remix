@@ -98,13 +98,36 @@ export function cloneProject(project: Project): Project {
   return JSON.parse(JSON.stringify(project)) as Project;
 }
 
+function rippleSectionEarlier(project: Project, targetId: string, requestedStartBar: number) {
+  const target = project.sections.find((section) => section.id === targetId);
+  if (!target) throw new Error(`Unknown section: ${targetId}`);
+
+  const beforeStartBar = target.startBar;
+  const afterStartBar = Math.max(0, Math.min(project.totalBars - target.lengthBars, requestedStartBar));
+  const delta = afterStartBar - beforeStartBar;
+  target.startBar = afterStartBar;
+
+  if (delta >= 0) return;
+
+  for (const section of project.sections) {
+    if (section.id !== target.id && section.startBar > beforeStartBar) {
+      section.startBar = Math.max(0, section.startBar + delta);
+    }
+  }
+
+  const predecessor = project.sections
+    .filter((section) => section.id !== target.id && section.startBar < target.startBar)
+    .sort((left, right) => right.startBar - left.startBar)[0];
+  if (predecessor && predecessor.startBar + predecessor.lengthBars > target.startBar) {
+    predecessor.lengthBars = Math.max(0, target.startBar - predecessor.startBar);
+  }
+}
+
 export function applyOperations(project: Project, operations: EditOperation[], incrementVersion = false): Project {
   const next = cloneProject(project);
   for (const operation of operations.filter((item) => item.selected)) {
     if (operation.action === "move_section") {
-      const section = next.sections.find((item) => item.id === operation.targetId);
-      if (!section) throw new Error(`Unknown section: ${operation.targetId}`);
-      section.startBar = Math.max(0, Math.min(next.totalBars - section.lengthBars, operation.afterStartBar));
+      rippleSectionEarlier(next, operation.targetId, operation.afterStartBar);
     } else if (operation.action === "set_section_energy") {
       const section = next.sections.find((item) => item.id === operation.targetId);
       if (!section) throw new Error(`Unknown section: ${operation.targetId}`);

@@ -23,12 +23,15 @@ export function arrangementSignature(project: Project) {
 export function createArrangementSegments(project: Project, audioDuration: number): ArrangementSegment[] {
   if (project.totalBars <= 0 || audioDuration <= 0) return [];
   const secondsPerBar = audioDuration / project.totalBars;
+  const orderedSections = [...project.sections].sort((left, right) => left.startBar - right.startBar);
 
-  return project.sections.flatMap((section) => {
+  return orderedSections.flatMap((section, index) => {
     const sourceBar = Math.max(0, Math.min(project.totalBars, sourceStartBar(section)));
     const destinationBar = Math.max(0, Math.min(project.totalBars, section.startBar));
+    const nextSectionStart = orderedSections[index + 1]?.startBar ?? project.totalBars;
     const lengthBars = Math.max(0, Math.min(
       section.lengthBars,
+      nextSectionStart - destinationBar,
       project.totalBars - sourceBar,
       project.totalBars - destinationBar,
     ));

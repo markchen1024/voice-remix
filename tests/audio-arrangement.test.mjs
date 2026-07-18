@@ -41,3 +41,16 @@ test("audition starts one bar before the earliest selected section move", () => 
   assert.equal(findAuditionStartBar(operations, 16), 39);
   assert.equal(findAuditionStartBar([{ action: "set_track_gain", selected: true }], 16), 15);
 });
+
+test("overlapping sections are clipped so the scheduler never double-plays a stem", () => {
+  const overlapping = {
+    ...project,
+    sections: [
+      { id: "build", kind: "verse", label: "Build", sourceStartBar: 37, startBar: 37, lengthBars: 7, energy: 0.7 },
+      { id: "chorus-2", kind: "chorus", label: "Final Chorus", sourceStartBar: 44, startBar: 40, lengthBars: 9, energy: 0.9 },
+    ],
+  };
+  const segments = createArrangementSegments(overlapping, 118);
+  assert.equal(segments[0].lengthBars, 3);
+  assert.equal(segments[0].destinationStartBar + segments[0].lengthBars, segments[1].destinationStartBar);
+});
