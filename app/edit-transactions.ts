@@ -202,7 +202,7 @@ export function createLocalTransaction(input: string, project: Project): EditTra
     }
   }
 
-  if (/鼓更有力量|鼓更强|harder drums?|stronger drums?/i.test(input)) {
+  if (/鼓.*(?:更强|再强|有力量)|harder drums?|stronger drums?/i.test(input)) {
     const drums = project.tracks.find((track) => track.id === "drums");
     if (drums && !protectedTargets.includes(drums.label)) {
       operations.push({ id: operationId(), action: "set_track_gain", targetId: "drums", targetLabel: drums.label, beforeLevel: drums.level, afterLevel: Math.min(1.5, drums.level + 0.25), explanation: "Raise the drum stem by approximately 1.9 dB.", selected: true });

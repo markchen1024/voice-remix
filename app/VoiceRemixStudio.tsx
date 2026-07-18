@@ -9,6 +9,7 @@ import { createEditorContext } from "./editor-context";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
+import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeTranscription, type RealtimeTranscriptionClient } from "./realtime-transcription";
 
 const INITIAL_PROJECT: Project = {
@@ -467,16 +468,19 @@ export function VoiceRemixStudio() {
   const createProposal = async (rawInput: string) => {
     const input = rawInput.trim();
     if (!input || planning) return;
-    const context = createEditorContext(project, {
+    const previousProposal = proposal;
+    const planningProject = previousProposal ? applyOperations(project, previousProposal.operations) : project;
+    const context = createEditorContext(planningProject, {
       playheadBar: positionRef.current,
       playing: playingRef.current,
       auditioningProposal,
       selectedSectionId: selectedSection,
-      proposal,
+      proposal: previousProposal,
       canUndo,
       canRedo,
     });
-    const immediateCommand = routeImmediateEditorCommand(input, project, context);
+    const commandProject = auditioningProposal ? planningProject : project;
+    const immediateCommand = routeImmediateEditorCommand(input, commandProject, context);
     if (immediateCommand) {
       await executeImmediateEditorCommand(immediateCommand);
       setCommand("");
@@ -489,17 +493,18 @@ export function VoiceRemixStudio() {
     setPlanning(true);
     let nextProposal: EditTransaction | null = null;
     try {
-      const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project, context }) });
+      const response = await fetch("/api/plan-edit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request: input, project: planningProject, context }) });
       if (response.ok) nextProposal = ((await response.json()) as { transaction: EditTransaction }).transaction;
     } catch {
       // The local planner keeps the demo usable offline and when the API is unavailable.
     }
-    nextProposal ??= createLocalTransaction(input, project);
+    nextProposal ??= createLocalTransaction(input, planningProject);
+    if (nextProposal && previousProposal) nextProposal = mergeProposalRefinement(project, previousProposal, nextProposal);
     if (!nextProposal) {
-      setActivity((items) => [{ title: "Needs clarification", detail: `“${input}” did not produce a supported edit`, time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: previousProposal ? "Refinement needs clarification" : "Needs clarification", detail: `“${input}” did not produce a supported edit`, time: "NOW" }, ...items].slice(0, 5));
     } else {
       setProposal(nextProposal);
-      setActivity((items) => [{ title: "Music Diff ready", detail: `${nextProposal.operations.length} operations · ${nextProposal.planner} · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
+      setActivity((items) => [{ title: previousProposal ? "Music Diff refined" : "Music Diff ready", detail: `${nextProposal.operations.length} operations · ${nextProposal.planner} · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
     setPlanning(false);
     setCommand("");
