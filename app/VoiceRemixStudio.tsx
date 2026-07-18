@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, type EditTransaction, type MoveSectionOperation, type Project, type TrackId } from "./edit-transactions";
+import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -95,10 +96,11 @@ export function VoiceRemixStudio() {
   const [listening, setListening] = useState(false);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
-  const history = useRef<Project[]>([]);
+  const history = useRef(createProjectHistory<Project>());
   const scheduled = useRef(false);
   const players = useRef<Partial<Record<TrackId, Tone.Player>>>({});
 
@@ -157,27 +159,39 @@ export function VoiceRemixStudio() {
     }
   };
 
-  const stop = () => {
-    Tone.getTransport().stop();
-    Tone.getTransport().seconds = 0;
-    setPosition(0);
-    setPlaying(false);
-  };
-
   const commit = (next: Project, title: string, detail: string) => {
-    history.current.push(cloneProject(projectRef.current));
+    history.current = recordHistory(history.current, projectRef.current, cloneProject);
     if (next.version === projectRef.current.version) next.version += 1;
+    projectRef.current = next;
     setCanUndo(true);
+    setCanRedo(false);
     setProject(next);
+    setProposal(null);
     setActivity((items) => [{ title, detail, time: "NOW" }, ...items].slice(0, 5));
   };
 
   const undo = () => {
-    const previous = history.current.pop();
-    if (!previous) return;
-    setCanUndo(history.current.length > 0);
-    setProject(previous);
+    const result = undoHistory(history.current, projectRef.current, cloneProject);
+    if (!result) return;
+    history.current = result.history;
+    projectRef.current = result.value;
+    setCanUndo(history.current.past.length > 0);
+    setCanRedo(history.current.future.length > 0);
+    setProject(result.value);
+    setProposal(null);
     setActivity((items) => [{ title: "Undo", detail: "Restored the previous arrangement", time: "NOW" }, ...items].slice(0, 5));
+  };
+
+  const redo = () => {
+    const result = redoHistory(history.current, projectRef.current, cloneProject);
+    if (!result) return;
+    history.current = result.history;
+    projectRef.current = result.value;
+    setCanUndo(history.current.past.length > 0);
+    setCanRedo(history.current.future.length > 0);
+    setProject(result.value);
+    setProposal(null);
+    setActivity((items) => [{ title: "Redo", detail: "Reapplied the next arrangement", time: "NOW" }, ...items].slice(0, 5));
   };
 
   const toggleTrack = (trackId: TrackId) => {
@@ -200,6 +214,11 @@ export function VoiceRemixStudio() {
     if (!input || planning) return;
     if (/撤销|undo/i.test(input)) {
       undo();
+      setCommand("");
+      return;
+    }
+    if (/重做|redo/i.test(input)) {
+      redo();
       setCommand("");
       return;
     }
@@ -299,6 +318,7 @@ export function VoiceRemixStudio() {
           <div><span className="breadcrumb">Projects /</span><strong> Neon Pulse Loop</strong><i className="saved-dot" /> <small>Imported</small></div>
           <div className="page-actions">
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
+            <button onClick={redo} disabled={!canRedo}>↷ Redo</button>
             <button className="soft-button">Share</button>
             <button className="export-button">Export <span>↓</span></button>
           </div>
@@ -415,7 +435,7 @@ export function VoiceRemixStudio() {
 
         <footer className="player-bar">
           <div className="mini-song"><div className="mini-cover" /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={stop} aria-label="Return to start">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button aria-label="Forward">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><div className="progress-track"><i style={{ width: `${position / TOTAL_BARS * 100}%` }} /></div><span>1:59</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>
