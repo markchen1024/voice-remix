@@ -1388,7 +1388,9 @@ export function VoiceRemixStudio() {
               <p>Speak naturally while the music keeps playing. Edits land cleanly on the next bar.</p>
             <form className="prompt-box" onSubmit={runCommand}>
               <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceButtonLabel} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>
-                <span aria-hidden="true">{voiceState === "recording" ? "↑" : voiceState === "responding" ? "◼" : voiceState !== "idle" ? "✦" : "🎙"}</span>
+                <span className="voice-button-icon" aria-hidden="true">
+                  {voiceState === "idle" ? <svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" /></svg> : voiceState === "recording" ? "↑" : voiceState === "responding" ? "◼" : "✦"}
+                </span>
                 <small aria-hidden="true">{voiceState === "recording" ? "SEND" : voiceState === "responding" ? "STOP" : voiceState === "connecting" ? "LINK" : voiceState === "transcribing" ? "THINK" : "TALK"}</small>
               </button>
               <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState !== "idle"} />
