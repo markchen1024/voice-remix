@@ -41,6 +41,10 @@ test("full song imports become a single editable master mix", () => {
   assert.equal(imported.tracks[0].label, "MASTER MIX");
   assert.equal(imported.sections[0].startBar, 0);
   assert.equal(imported.sections.at(-1).startBar + imported.sections.at(-1).lengthBars, imported.totalBars);
+  imported.sections.slice(1).forEach((section, index) => {
+    const previous = imported.sections[index];
+    assert.equal(section.startBar, previous.startBar + previous.lengthBars);
+  });
   assert.equal(filenameTitle("My Song.wav"), "My Song");
 });
 

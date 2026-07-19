@@ -73,19 +73,27 @@ export function projectBarsForDuration(duration: number, bpm: number) {
 
 function estimatedSections(totalBars: number): Section[] {
   const definitions = [
-    ["intro-1", "intro", "Intro", 0, 0.08, 0.3],
-    ["verse-1", "verse", "Verse", 0.08, 0.26, 0.52],
-    ["chorus-1", "chorus", "Chorus", 0.26, 0.46, 0.82],
-    ["break-1", "break", "Break", 0.46, 0.54, 0.34],
-    ["verse-2", "verse", "Verse 2", 0.54, 0.72, 0.58],
-    ["chorus-2", "chorus", "Final Chorus", 0.72, 0.92, 0.94],
-    ["outro-1", "outro", "Outro", 0.92, 1, 0.38],
+    ["intro-1", "intro", "Intro", 0.08, 0.3],
+    ["verse-1", "verse", "Verse", 0.18, 0.52],
+    ["chorus-1", "chorus", "Chorus", 0.2, 0.82],
+    ["break-1", "break", "Break", 0.08, 0.34],
+    ["verse-2", "verse", "Verse 2", 0.18, 0.58],
+    ["chorus-2", "chorus", "Final Chorus", 0.2, 0.94],
+    ["outro-1", "outro", "Outro", 0.08, 0.38],
   ] as const;
+  const distributableBars = totalBars - definitions.length;
+  const exactExtras = definitions.map((definition) => definition[3] * distributableBars);
+  const extraBars = exactExtras.map(Math.floor);
+  let unassignedBars = distributableBars - extraBars.reduce((sum, value) => sum + value, 0);
+  const byRemainder = exactExtras.map((value, index) => ({ index, remainder: value - Math.floor(value) })).sort((left, right) => right.remainder - left.remainder);
+  for (let index = 0; index < byRemainder.length && unassignedBars > 0; index += 1, unassignedBars -= 1) extraBars[byRemainder[index].index] += 1;
+  let startBar = 0;
 
-  return definitions.map(([id, kind, label, startRatio, endRatio, energy], index) => {
-    const startBar = index === 0 ? 0 : Math.round(totalBars * startRatio);
-    const endBar = index === definitions.length - 1 ? totalBars : Math.max(startBar + 1, Math.round(totalBars * endRatio));
-    return { id, kind, label, sourceStartBar: startBar, startBar, lengthBars: Math.max(1, endBar - startBar), energy };
+  return definitions.map(([id, kind, label, , energy], index) => {
+    const lengthBars = 1 + extraBars[index];
+    const section = { id, kind, label, sourceStartBar: startBar, startBar, lengthBars, energy };
+    startBar += lengthBars;
+    return section;
   });
 }
 

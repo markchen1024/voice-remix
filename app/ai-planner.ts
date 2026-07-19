@@ -9,7 +9,7 @@ const trackIds = ["drums", "percussion", "bass", "synth", "fx", "mix"] as const;
 export const MusicEditPlan = z.object({
   summary: z.string(),
   assumptions: z.array(z.string()).max(6),
-  protectedTargets: z.array(z.enum(trackIds)).max(5),
+  protectedTargets: z.array(z.enum(trackIds)).max(6),
   operations: z.array(z.discriminatedUnion("action", [
     z.object({ action: z.literal("move_section"), targetId: z.string(), barsEarlier: z.number().int().min(1).max(32), explanation: z.string() }),
     z.object({ action: z.literal("set_track_enabled"), targetId: z.enum(trackIds), enabled: z.boolean(), explanation: z.string() }),
