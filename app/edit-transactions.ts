@@ -1,5 +1,5 @@
 export type SectionKind = "intro" | "verse" | "break" | "chorus" | "outro";
-export type TrackId = "drums" | "percussion" | "bass" | "synth" | "fx";
+export type TrackId = "drums" | "percussion" | "bass" | "synth" | "fx" | "mix";
 
 export type Section = {
   id: string;
@@ -120,6 +120,7 @@ const trackMatchers: Array<[RegExp, TrackId]> = [
   [/贝斯|bass/i, "bass"],
   [/合成器|和弦|主旋律|synth|chords?|lead/i, "synth"],
   [/效果|氛围|fx|effects?/i, "fx"],
+  [/整首|母带|混音|master(?: mix)?|full mix/i, "mix"],
 ];
 
 export function cloneProject(project: Project): Project {
