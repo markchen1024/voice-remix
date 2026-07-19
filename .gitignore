@@ -43,3 +43,5 @@ next-env.d.ts
 /work/
 /.firecrawl/
 *.tsbuildinfo
+/videos/*.mp4
+/tmp/

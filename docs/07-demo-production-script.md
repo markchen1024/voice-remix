@@ -8,16 +8,16 @@ This is the production-ready English script. Record the product footage in short
 
 | File | Target length | Capture |
 |---|---:|---|
-| `01-problem-and-playback.mp4` | 15s | Start on the five-stem editor, play the song, mute and restore one stem. |
-| `02-real-audio-import.mp4` | 18s | Open Import audio, show the full-mix, replacement-stem, and synchronized-stem options, then switch to the nine-stem project. |
-| `03-live-voice-request.mp4` | 22s | Return to Neon Pulse Loop, start playback, press Talk, and speak the featured request. Keep the partial transcript visible. |
-| `04-music-diff.mp4` | 28s | Hold on `GPT-5.6-SOL`, MOVE, GAIN, protected BASS, and the proposed ghost clip. Toggle Current and Proposed once. |
-| `05-selective-apply.mp4` | 24s | Deselect the drum gain, apply only the chorus move, then Undo and Redo. |
-| `06-follow-up-and-export.mp4` | 22s | Ask to push the drums harder, use `Apply it`, and briefly open Export. |
-| `07-architecture.mp4` | 22s | Pan over the README architecture diagram and one short Structured Output/code view. Do not show secrets or terminals containing environment variables. |
-| `08-codex-and-close.mp4` | 22s | Show the dated commit history, briefly show the primary Codex build task, then return to the product and tagline. |
+| `01-problem-and-playback.mkv` | 17s | Start on the five-stem editor, play the song, mute and restore one stem. |
+| `02-real-audio-import.mkv` | 19s | Open Import audio, show the full-mix, replacement-stem, and synchronized-stem options, then switch to the nine-stem project. |
+| `03-live-voice-request.mkv` | 33s | Return to Neon Pulse Loop, press Talk, speak the featured request, and preserve the genuine assistant reply. |
+| `04-compare-and-apply-edit.mkv` | 27s | Hold on `GPT-5.6-SOL`, MOVE, GAIN, protected BASS, and toggle Current and Proposed. |
+| `05-undo-and-export.mkv` | 20.8s | Apply the edit, then show Undo and Redo. |
+| `06-export-download.mkv` | 14.5s | Open Export and preserve the successful download confirmation. |
+| Generated product montage | 17.5s | Reuse editor and Music Diff footage under the deterministic runtime-boundary narration. No code-screen is required. |
+| Generated OG close | 19.85s | Use `public/og.png` with a subtle push-in under the Codex build story and closing tagline. |
 
-Record two clean takes of files 03–06 while the live GPT-5.6 path is working. Keep the best continuous API sequence as evidence even if the service later becomes unavailable.
+The final 2:48.7 cut is assembled reproducibly by `scripts/assemble-demo-video.ps1`. The live GPT-5.6 request and spoken assistant response remain genuine source audio; the later technical explanation uses product footage because the rules do not require code or Codex UI to appear on screen.
 
 ## Final English narration
 
