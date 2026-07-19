@@ -281,6 +281,7 @@ export function VoiceRemixStudio() {
   const realtimeConversation = useRef<RealtimeConversationClient | null>(null);
   const realtimeToolHandler = useRef<(call: RealtimeToolCall) => Promise<unknown>>(async () => ({ ok: false, error: "Editor is not ready" }));
   const voiceDuckingLevel = useRef<number | null>(null);
+  const resumePlaybackAfterVoice = useRef(false);
   const liveQueueRef = useRef<LiveCommandQueue | null>(null);
   const previousLivePosition = useRef(0);
   const liveQueueExecutionHandler = useRef<(queue: LiveCommandQueue) => void>(() => undefined);
@@ -435,6 +436,21 @@ export function VoiceRemixStudio() {
       destination.volume.rampTo(voiceDuckingLevel.current, 0.12);
       voiceDuckingLevel.current = null;
     }
+  }
+
+  function pausePlaybackForVoiceCapture() {
+    resumePlaybackAfterVoice.current = playingRef.current;
+    if (!playingRef.current) return;
+    Tone.getTransport().pause();
+    setPlaybackState(false);
+  }
+
+  function restorePlaybackAfterVoiceCapture() {
+    const shouldResume = resumePlaybackAfterVoice.current;
+    resumePlaybackAfterVoice.current = false;
+    if (!shouldResume || playingRef.current) return;
+    Tone.getTransport().start("+0.03");
+    setPlaybackState(true);
   }
 
   const setupAudio = async () => {
@@ -890,6 +906,7 @@ export function VoiceRemixStudio() {
         microphoneStream.current = null;
         mediaRecorder.current = null;
         setVoiceDucking(false);
+        restorePlaybackAfterVoiceCapture();
         setVoiceState("idle");
         setActivity((items) => [{ title: "Recording failed", detail: "The microphone stream stopped unexpectedly", time: "NOW" }, ...items].slice(0, 5));
       };
@@ -900,6 +917,7 @@ export function VoiceRemixStudio() {
         mediaRecorder.current = null;
         voiceChunks.current = [];
         setVoiceDucking(false);
+        restorePlaybackAfterVoiceCapture();
         if (blob.size === 0) {
           setVoiceState("idle");
           setActivity((items) => [{ title: "No voice detected", detail: "Try recording the command again", time: "NOW" }, ...items].slice(0, 5));
@@ -915,6 +933,7 @@ export function VoiceRemixStudio() {
       microphoneStream.current?.getTracks().forEach((track) => track.stop());
       microphoneStream.current = null;
       setVoiceDucking(false);
+      restorePlaybackAfterVoiceCapture();
       setVoiceState("idle");
       setActivity((items) => [{ title: "Microphone permission needed", detail: "Allow microphone access and try again", time: "NOW" }, ...items].slice(0, 5));
     }
@@ -945,6 +964,7 @@ export function VoiceRemixStudio() {
           realtimeConversation.current?.close();
           realtimeConversation.current = null;
           setVoiceDucking(false);
+          restorePlaybackAfterVoiceCapture();
           setVoiceState("idle");
           setActivity((items) => [{ title: "Realtime voice failed", detail: "Use the microphone again or type the command", time: "NOW" }, ...items].slice(0, 5));
         },
@@ -957,20 +977,23 @@ export function VoiceRemixStudio() {
     setVoiceDucking(true);
     client.startTurn();
     setVoiceState("recording");
-    setActivity((items) => [{ title: "Live Copilot listening", detail: "Speak naturally · click again when done", time: "NOW" }, ...items].slice(0, 5));
+    setActivity((items) => [{ title: "Live Copilot listening", detail: "Playback paused · click again when done", time: "NOW" }, ...items].slice(0, 5));
   };
 
   const toggleVoiceCapture = async () => {
     if (voiceState === "recording") {
       if (realtimeConversation.current) {
-        setVoiceDucking(false);
         setVoiceState("transcribing");
         try {
           realtimeConversation.current.stopTurn();
+          setVoiceDucking(false);
+          restorePlaybackAfterVoiceCapture();
         } catch (error) {
           console.error("Realtime voice stop failed", error);
           realtimeConversation.current.close();
           realtimeConversation.current = null;
+          setVoiceDucking(false);
+          restorePlaybackAfterVoiceCapture();
           setVoiceState("idle");
         }
       } else if (mediaRecorder.current?.state === "recording") {
@@ -979,6 +1002,7 @@ export function VoiceRemixStudio() {
       return;
     }
     if ((voiceState !== "idle" && voiceState !== "responding") || planning || audioSwitching) return;
+    pausePlaybackForVoiceCapture();
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
       await startFallbackVoiceCapture();
       return;
@@ -993,6 +1017,7 @@ export function VoiceRemixStudio() {
       setVoiceDucking(false);
       setVoiceState("idle");
       if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
+        restorePlaybackAfterVoiceCapture();
         setActivity((items) => [{ title: "Microphone permission needed", detail: "Allow microphone access and try again", time: "NOW" }, ...items].slice(0, 5));
         return;
       }
@@ -1385,7 +1410,7 @@ export function VoiceRemixStudio() {
             <div className="create-glow" />
               <span className="ai-label"><i>●</i> LIVE SESSION · {playing ? "MUSIC RUNNING" : "READY"}</span>
               <h1>Talk to the arrangement.</h1>
-              <p>Speak naturally while the music keeps playing. Edits land cleanly on the next bar.</p>
+              <p>Playback pauses while you speak, then resumes from the same spot for the edit.</p>
             <form className="prompt-box" onSubmit={runCommand}>
               <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceButtonLabel} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>
                 <span className="voice-button-icon" aria-hidden="true">

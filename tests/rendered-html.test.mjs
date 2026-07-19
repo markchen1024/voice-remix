@@ -28,6 +28,7 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /59<!-- --> bars/);
   assert.match(html, /LIVE SESSION/);
   assert.match(html, /Talk to the arrangement\./);
+  assert.match(html, /Playback pauses while you speak, then resumes from the same spot for the edit\./);
   assert.match(html, /aria-label="Talk to Voice Remix"/);
   assert.match(html, />TALK<\/small>/);
   assert.match(html, /1-min demo/);
