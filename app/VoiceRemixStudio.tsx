@@ -1315,7 +1315,7 @@ export function VoiceRemixStudio() {
       )}
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo">
-          <Image src="/brand/voice-remix-icon.png" alt="" width={30} height={30} priority />
+          <Image src="/brand/voice-remix-icon.png" alt="" width={30} height={30} priority unoptimized />
           <span>Voice Remix</span>
         </div>
         <div className="nav-group">
