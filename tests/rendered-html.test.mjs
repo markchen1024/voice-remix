@@ -22,10 +22,11 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /<title>Voice Remix/);
   assert.match(html, /Voice Remix/);
   assert.match(html, /Neon Pulse Loop/);
-  assert.match(html, /5 Suno stems/);
+  assert.match(html, /5 stems/);
   assert.match(html, /59<!-- --> bars/);
   assert.match(html, /LIVE SESSION/);
   assert.match(html, /Talk to the arrangement\./);
+  assert.match(html, /Import audio/);
   assert.match(html, /VISUAL EDITOR/);
   assert.match(html, /aria-label="Playback position"/);
   assert.match(html, /type="range"/);

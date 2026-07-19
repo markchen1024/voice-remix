@@ -13,6 +13,7 @@ import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeConversation, type RealtimeConversationClient, type RealtimeToolCall } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
+import { analyzeDecodedAudio, createFullMixProject, filenameTitle, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset } from "./local-audio-import";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -39,7 +40,6 @@ const INITIAL_PROJECT: Project = {
 };
 
 const BAR_PX = 58;
-const TOTAL_BARS = 59;
 
 function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
   if (action === "play" || action === "pause" || action === "undo" || action === "redo") return { action };
@@ -49,7 +49,7 @@ function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
   if (action === "audition_proposed") return { action: "audition_proposed" };
   return null;
 }
-const AUDIO_DURATION = 119.4;
+const DEMO_AUDIO_DURATION = 119.4;
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
 function CoverArt({ mini = false }: { mini?: boolean }) {
@@ -129,7 +129,7 @@ function formatOverviewTime(seconds: number) {
   return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
 }
 
-function MasterWaveform({ project, position, auditioning, cueBar, onScrub }: { project: Project; position: number; auditioning: boolean; cueBar?: number; onScrub: (bar: number) => void }) {
+function MasterWaveform({ project, position, audioDuration, auditioning, cueBar, onScrub }: { project: Project; position: number; audioDuration: number; auditioning: boolean; cueBar?: number; onScrub: (bar: number) => void }) {
   const baseCanvas = useRef<HTMLCanvasElement>(null);
   const playedCanvas = useRef<HTMLCanvasElement>(null);
   const [envelopes, setEnvelopes] = useState<PeakBank>({});
@@ -207,7 +207,7 @@ function MasterWaveform({ project, position, auditioning, cueBar, onScrub }: { p
       aria-valuemin={0}
       aria-valuemax={project.totalBars}
       aria-valuenow={Number(position.toFixed(2))}
-      aria-valuetext={`${activeSection?.label ?? "Arrangement"}, bar ${Math.floor(position) + 1}, ${formatOverviewTime(position / project.totalBars * AUDIO_DURATION)}`}
+      aria-valuetext={`${activeSection?.label ?? "Arrangement"}, bar ${Math.floor(position) + 1}, ${formatOverviewTime(position / project.totalBars * audioDuration)}`}
       title="Real peak-derived master overview · click or drag to seek"
       onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromClientX(event.clientX, event.currentTarget); }}
       onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromClientX(event.clientX, event.currentTarget); }}
@@ -229,7 +229,7 @@ function MasterWaveform({ project, position, auditioning, cueBar, onScrub }: { p
       </div>
       {cueBar !== undefined && <span className="master-live-cue" aria-hidden="true" style={{ left: `${cueBar / project.totalBars * 100}%` }}><i>NEXT</i></span>}
       <span className="master-playhead" aria-hidden="true" style={{ left: `${progress}%` }} />
-      <span className="master-time" aria-hidden="true">{formatOverviewTime(position / project.totalBars * AUDIO_DURATION)} / 1:59</span>
+      <span className="master-time" aria-hidden="true">{formatOverviewTime(position / project.totalBars * audioDuration)} / {formatOverviewTime(audioDuration)}</span>
     </div>
   );
 }
@@ -237,6 +237,9 @@ function MasterWaveform({ project, position, auditioning, cueBar, onScrub }: { p
 export function VoiceRemixStudio() {
   const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const projectRef = useRef(project);
+  const [projectTitle, setProjectTitle] = useState("Neon Pulse Loop");
+  const [audioDuration, setAudioDuration] = useState(DEMO_AUDIO_DURATION);
+  const audioDurationRef = useRef(DEMO_AUDIO_DURATION);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const positionRef = useRef(0);
@@ -252,10 +255,15 @@ export function VoiceRemixStudio() {
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [mixerStatus, setMixerStatus] = useState<MixerStatus>(EMPTY_MIXER_STATUS);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importingAudio, setImportingAudio] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importTarget, setImportTarget] = useState<TrackId>("drums");
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
   const history = useRef(createProjectHistory<Project>());
+  const importedObjectUrls = useRef<Partial<Record<TrackId, [string, string]>>>({});
   const playingRef = useRef(false);
   const audioTransition = useRef(0);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
@@ -287,7 +295,9 @@ export function VoiceRemixStudio() {
     const update = () => {
       const transport = Tone.getTransport();
       if (transport.state === "started") {
-        const nextPosition = (transport.seconds / AUDIO_DURATION * TOTAL_BARS) % TOTAL_BARS;
+        const totalBars = projectRef.current.totalBars;
+        const duration = audioDurationRef.current;
+        const nextPosition = (transport.seconds / duration * totalBars) % totalBars;
         positionRef.current = nextPosition;
         setPosition(nextPosition);
       }
@@ -313,6 +323,7 @@ export function VoiceRemixStudio() {
     transport.cancel();
     Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
     Object.values(buffers.current).forEach((buffer) => buffer.dispose());
+    Object.values(importedObjectUrls.current).flatMap((urls) => urls ?? []).forEach((url) => URL.revokeObjectURL(url));
     players.current = {};
     buffers.current = {};
     if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
@@ -338,28 +349,31 @@ export function VoiceRemixStudio() {
     buffers.current = {};
     scheduled.current = false;
     scheduledArrangement.current = "";
+    audioSetup.current = null;
     setMixerStatus(EMPTY_MIXER_STATUS);
     Tone.setContext(new Tone.Context({ latencyHint: "playback" }), true);
   }
 
   function seekToBar(bar: number) {
-    const nextPosition = Math.max(0, Math.min(TOTAL_BARS - 0.001, bar));
-    Tone.getTransport().seconds = nextPosition / TOTAL_BARS * AUDIO_DURATION;
+    const totalBars = projectRef.current.totalBars;
+    const nextPosition = Math.max(0, Math.min(totalBars - 0.001, bar));
+    Tone.getTransport().seconds = nextPosition / totalBars * audioDurationRef.current;
     positionRef.current = nextPosition;
     setPosition(nextPosition);
   }
 
   function scrubToBar(bar: number) {
-    const nextPosition = Math.max(0, Math.min(TOTAL_BARS - 0.001, bar));
+    const totalBars = projectRef.current.totalBars;
+    const nextPosition = Math.max(0, Math.min(totalBars - 0.001, bar));
     positionRef.current = nextPosition;
     setPosition(nextPosition);
-    if (scheduled.current) Tone.getTransport().seconds = nextPosition / TOTAL_BARS * AUDIO_DURATION;
+    if (scheduled.current) Tone.getTransport().seconds = nextPosition / totalBars * audioDurationRef.current;
   }
 
   function scrubFromPointer(event: ReactPointerEvent<HTMLInputElement>) {
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = (event.clientX - bounds.left) / bounds.width;
-    scrubToBar(ratio * (TOTAL_BARS - 0.001));
+    scrubToBar(ratio * (projectRef.current.totalBars - 0.001));
   }
 
   function auditionStartBar(nextProposal: EditTransaction) {
@@ -374,7 +388,7 @@ export function VoiceRemixStudio() {
 
     disposeArrangementPlayers();
 
-    const segments = createArrangementSegments(nextProject, AUDIO_DURATION);
+    const segments = createArrangementSegments(nextProject, audioDurationRef.current);
     nextProject.tracks.forEach((track) => {
       const buffer = buffers.current[track.id]!;
       players.current[track.id] = segments.map((segment) => {
@@ -415,14 +429,15 @@ export function VoiceRemixStudio() {
       const contextStarted = Tone.start();
       audioSetup.current = (async () => {
         await contextStarted;
-        const loadedBuffers = await Promise.all(INITIAL_PROJECT.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
+        const audioProject = projectRef.current;
+        const loadedBuffers = await Promise.all(audioProject.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
         loadedBuffers.forEach(([trackId, buffer]) => { buffers.current[trackId] = buffer; });
         const transport = Tone.getTransport();
         transport.loop = true;
-        transport.loopEnd = AUDIO_DURATION;
-        scheduleAudioArrangement(projectRef.current, true);
-        applyMixerState(projectRef.current);
-        transport.seconds = positionRef.current / TOTAL_BARS * AUDIO_DURATION;
+        transport.loopEnd = audioDurationRef.current;
+        scheduleAudioArrangement(audioProject, true);
+        applyMixerState(audioProject);
+        transport.seconds = positionRef.current / audioProject.totalBars * audioDurationRef.current;
         scheduled.current = true;
       })();
     }
@@ -551,7 +566,7 @@ export function VoiceRemixStudio() {
   };
 
   const queueProposalForNextBar = (transaction: EditTransaction) => {
-    const queue = createLiveCommandQueue(transaction, positionRef.current, TOTAL_BARS);
+    const queue = createLiveCommandQueue(transaction, positionRef.current, projectRef.current.totalBars);
     liveQueueRef.current = queue;
     setLiveQueue(queue);
     setActivity((items) => [{ title: "Live edit queued", detail: `${transaction.summary} · executes at bar ${queue.executeAtBar + 1}`, time: "NEXT BAR" }, ...items].slice(0, 5));
@@ -605,7 +620,7 @@ export function VoiceRemixStudio() {
       const transport = Tone.getTransport();
       transport.loop = true;
       transport.loopStart = 0;
-      transport.loopEnd = AUDIO_DURATION;
+      transport.loopEnd = audioDurationRef.current;
       setActivity((items) => [{ title: "Voice control · Full song", detail: "Section loop cleared", time: "NOW" }, ...items].slice(0, 5));
     } else if (editorCommand.action === "seek_section") {
       const nextAudibleProject = auditioningProposal && proposedProject ? proposedProject : project;
@@ -617,8 +632,8 @@ export function VoiceRemixStudio() {
       await setupAudio();
       const transport = Tone.getTransport();
       transport.loop = true;
-      transport.loopStart = editorCommand.startBar / TOTAL_BARS * AUDIO_DURATION;
-      transport.loopEnd = (editorCommand.startBar + editorCommand.lengthBars) / TOTAL_BARS * AUDIO_DURATION;
+      transport.loopStart = editorCommand.startBar / projectRef.current.totalBars * audioDurationRef.current;
+      transport.loopEnd = (editorCommand.startBar + editorCommand.lengthBars) / projectRef.current.totalBars * audioDurationRef.current;
       seekToBar(editorCommand.startBar);
       if (transport.state !== "started") transport.start();
       setPlaybackState(true);
@@ -763,7 +778,7 @@ export function VoiceRemixStudio() {
     previousLivePosition.current = position;
     const queue = liveQueueRef.current;
     if (!queue || !playingRef.current) return;
-    if (crossedQuantizedBar(previous, position, queue.executeAtBar, TOTAL_BARS)) liveQueueExecutionHandler.current(queue);
+    if (crossedQuantizedBar(previous, position, queue.executeAtBar, projectRef.current.totalBars)) liveQueueExecutionHandler.current(queue);
   }, [position]);
 
   useEffect(() => {
@@ -947,13 +962,107 @@ export function VoiceRemixStudio() {
     }
   };
 
+  const releaseImportedTrack = (trackId: TrackId) => {
+    importedObjectUrls.current[trackId]?.forEach((url) => URL.revokeObjectURL(url));
+    delete importedObjectUrls.current[trackId];
+  };
+
+  const releaseAllImportedAudio = () => {
+    (Object.keys(importedObjectUrls.current) as TrackId[]).forEach(releaseImportedTrack);
+  };
+
+  const decodeLocalAudio = async (file: File): Promise<LocalAudioAsset> => {
+    const supportedExtension = /\.(aac|flac|m4a|mp3|ogg|wav|webm)$/i.test(file.name);
+    if ((!file.type.startsWith("audio/") && !supportedExtension) || file.size === 0) throw new Error("Choose a valid MP3, WAV, M4A, AAC, OGG, FLAC, or WebM audio file.");
+    if (file.size > 250 * 1024 * 1024) throw new Error("Audio files must be smaller than 250 MB.");
+
+    const decodingContext = new AudioContext();
+    try {
+      const decoded = await decodingContext.decodeAudioData(await file.arrayBuffer());
+      if (!Number.isFinite(decoded.duration) || decoded.duration <= 0) throw new Error("The audio file has no playable duration.");
+      const analysis = analyzeDecodedAudio(decoded);
+      const audioUrl = URL.createObjectURL(file);
+      const peaksUrl = URL.createObjectURL(new Blob([JSON.stringify(analysis.envelope)], { type: "application/json" }));
+      return { audioUrl, peaksUrl, duration: analysis.duration, filename: file.name, meanDb: analysis.meanDb, maxDb: analysis.maxDb, nearSilent: analysis.nearSilent };
+    } finally {
+      await decodingContext.close();
+    }
+  };
+
+  const prepareImportedProject = (nextProject: Project, nextDuration: number, nextTitle: string, detail: string) => {
+    resetAudioRuntime();
+    setPlaybackState(false);
+    projectRef.current = nextProject;
+    audioDurationRef.current = nextDuration;
+    positionRef.current = 0;
+    previousLivePosition.current = 0;
+    followedSection.current = "";
+    history.current = createProjectHistory<Project>();
+    clearLiveQueue();
+    setCanUndo(false);
+    setCanRedo(false);
+    setProposal(null);
+    setAuditioningProposal(false);
+    setProject(nextProject);
+    setProjectTitle(nextTitle);
+    setAudioDuration(nextDuration);
+    setPosition(0);
+    setSelectedSection(nextProject.sections[0].id);
+    setActivity((items) => [{ title: "Local audio imported", detail, time: "NOW" }, ...items].slice(0, 5));
+    setImportOpen(false);
+  };
+
+  const importFullSong = async (file?: File) => {
+    if (!file || importingAudio) return;
+    setImportingAudio(true);
+    setImportError("");
+    let asset: LocalAudioAsset | null = null;
+    try {
+      asset = await decodeLocalAudio(file);
+      const nextProject = createFullMixProject(projectRef.current, asset);
+      releaseAllImportedAudio();
+      importedObjectUrls.current.mix = [asset.audioUrl, asset.peaksUrl];
+      prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} estimated bars · master mix`);
+    } catch (error) {
+      if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
+      setImportError(error instanceof Error ? error.message : "The song could not be imported.");
+    } finally {
+      setImportingAudio(false);
+    }
+  };
+
+  const importStem = async (file?: File) => {
+    if (!file || importingAudio) return;
+    setImportingAudio(true);
+    setImportError("");
+    let asset: LocalAudioAsset | null = null;
+    try {
+      const target = projectRef.current.tracks.find((track) => track.id === importTarget);
+      if (!target || target.id === "mix") throw new Error("Open the original stem project before replacing an individual track.");
+      asset = await decodeLocalAudio(file);
+      const durationDifference = Math.abs(asset.duration - audioDurationRef.current);
+      if (durationDifference > Math.max(0.75, audioDurationRef.current * 0.01)) {
+        throw new Error(`This stem is ${formatOverviewTime(asset.duration)}; the project is ${formatOverviewTime(audioDurationRef.current)}. Import synchronized stems with matching duration.`);
+      }
+      const nextProject = replaceProjectStem(projectRef.current, importTarget, asset);
+      releaseImportedTrack(importTarget);
+      importedObjectUrls.current[importTarget] = [asset.audioUrl, asset.peaksUrl];
+      prepareImportedProject(nextProject, audioDurationRef.current, projectTitle, `${target.label} replaced with ${file.name}`);
+    } catch (error) {
+      if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
+      setImportError(error instanceof Error ? error.message : "The stem could not be imported.");
+    } finally {
+      setImportingAudio(false);
+    }
+  };
+
   const exportProject = () => {
     const data = createProjectExport(project);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = projectExportFilename("Neon Pulse Loop");
+    link.download = projectExportFilename(projectTitle);
     document.body.append(link);
     link.click();
     link.remove();
@@ -963,9 +1072,9 @@ export function VoiceRemixStudio() {
 
   const selected = project.sections.find((section) => section.id === selectedSection)!;
   const active = sectionAt(project, Math.floor(position));
-  const barLabels = useMemo(() => Array.from({ length: TOTAL_BARS }, (_, index) => index + 1), []);
+  const barLabels = useMemo(() => Array.from({ length: project.totalBars }, (_, index) => index + 1), [project.totalBars]);
   const selectedProposalOperations = proposal?.operations.filter((operation) => operation.selected) ?? [];
-  const liveBarsRemaining = liveQueue ? forwardBarDistance(position, liveQueue.executeAtBar, TOTAL_BARS) : 0;
+  const liveBarsRemaining = liveQueue ? forwardBarDistance(position, liveQueue.executeAtBar, project.totalBars) : 0;
   const liveBeatsRemaining = Math.max(0, liveBarsRemaining * 4);
   const proposedSectionChanges = proposedProject ? proposedProject.sections.filter((section) => {
     const current = project.sections.find((item) => item.id === section.id);
@@ -974,9 +1083,41 @@ export function VoiceRemixStudio() {
   const affectedSectionIds = new Set(proposedSectionChanges.map((section) => section.id));
   const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
   const voiceButtonLabel = voiceState === "recording" ? "Send voice turn" : voiceState === "responding" ? "Interrupt Voice Remix" : voiceState === "connecting" ? "Connecting realtime voice" : voiceState === "transcribing" ? "Voice Remix is thinking" : "Talk to Voice Remix";
+  const availableStemTargets = project.tracks.filter((track) => REPLACEABLE_STEM_IDS.some((trackId) => trackId === track.id));
 
   return (
     <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
+      {importOpen && (
+        <div className="import-backdrop" role="presentation">
+          <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
+            <div className="import-heading">
+              <div><span className="overline">LOCAL AUDIO</span><h2 id="import-title">Import into the arrangement</h2><p>Audio is decoded in this browser and never uploaded.</p></div>
+              <button type="button" onClick={() => setImportOpen(false)} aria-label="Close audio import">×</button>
+            </div>
+            <div className="import-options">
+              <label className={`import-option ${importingAudio ? "disabled" : ""}`}>
+                <input type="file" accept="audio/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm" disabled={importingAudio} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importFullSong(file); }} />
+                <span className="import-icon">♪</span>
+                <span><strong>Import a full song</strong><small>Creates one MASTER MIX lane with estimated sections and a real waveform.</small></span>
+                <i>{importingAudio ? "DECODING…" : "CHOOSE FILE"}</i>
+              </label>
+              <div className={`import-option stem-option ${!availableStemTargets.length || importingAudio ? "disabled" : ""}`}>
+                <span className="import-icon">≋</span>
+                <span><strong>Replace an individual stem</strong><small>Use a synchronized file with the same duration as this project.</small></span>
+                <select value={importTarget} disabled={!availableStemTargets.length || importingAudio} onChange={(event) => setImportTarget(event.target.value as TrackId)} aria-label="Stem to replace">
+                  {availableStemTargets.map((track) => <option value={track.id} key={track.id}>{track.label}</option>)}
+                </select>
+                <label className="stem-file-button">
+                  <input type="file" accept="audio/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm" disabled={!availableStemTargets.length || importingAudio} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importStem(file); }} />
+                  {importingAudio ? "DECODING…" : "CHOOSE STEM"}
+                </label>
+              </div>
+            </div>
+            {importError && <p className="import-error" role="alert">{importError}</p>}
+            <div className="import-note"><span>Supported</span> MP3, WAV, M4A, AAC, OGG, FLAC, WebM · maximum 250 MB</div>
+          </section>
+        </div>
+      )}
       <nav className="sidebar" aria-label="Main navigation">
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
@@ -986,8 +1127,8 @@ export function VoiceRemixStudio() {
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
-          <button className="project-link"><i className="project-art" />Neon Pulse Loop</button>
-          <button className="project-link faded"><i className="add-project">＋</i>New project</button>
+          <button className="project-link"><i className="project-art" />{projectTitle}</button>
+          <button className="project-link faded" onClick={() => { setImportError(""); setImportOpen(true); }}><i className="add-project">＋</i>Import audio</button>
         </div>
         <div className="sidebar-bottom">
           <button className="nav-item"><span>?</span> Help & feedback</button>
@@ -997,10 +1138,11 @@ export function VoiceRemixStudio() {
 
       <section className="app-main">
         <header className="page-header">
-          <div><span className="breadcrumb">Projects /</span><strong> Neon Pulse Loop</strong><i className="saved-dot" /> <small>Imported</small></div>
+          <div><span className="breadcrumb">Projects /</span><strong> {projectTitle}</strong><i className="saved-dot" /> <small>Imported</small></div>
           <div className="page-actions">
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
             <button onClick={redo} disabled={!canRedo}>↷ Redo</button>
+            <button className="soft-button" onClick={() => { setImportError(""); setImportOpen(true); }}>Import audio</button>
             <button className="soft-button">Share</button>
             <button className="export-button" onClick={exportProject}>Export <span>↓</span></button>
           </div>
@@ -1073,11 +1215,11 @@ export function VoiceRemixStudio() {
             <CoverArt />
             <div className="song-info">
               <span className={`overline ${auditioningProposal ? "audition-label" : ""}`}>{auditioningProposal ? "AUDITIONING PROPOSED · NOT APPLIED" : "CURRENT ARRANGEMENT"}</span>
-              <h2>Neon Pulse Loop</h2>
-              <p>Alt-electronic · Neon pop · Instrumental</p>
-              <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>5 Suno stems</span></div>
+              <h2>{projectTitle}</h2>
+              <p>{project.tracks.length === 1 && project.tracks[0].id === "mix" ? "Local audio · Estimated arrangement" : "Alt-electronic · Neon pop · Instrumental"}</p>
+              <div className="song-tags"><span>{project.bpm} BPM</span><span>{formatOverviewTime(audioDuration)}</span><span>{project.totalBars} bars</span><span>{project.tracks.length === 1 ? "1 master track" : `${project.tracks.length} stems`}</span></div>
             </div>
-            <MasterWaveform project={audibleProject} position={position} auditioning={auditioningProposal} cueBar={liveQueue?.executeAtBar} onScrub={scrubToBar} />
+            <MasterWaveform project={audibleProject} position={position} audioDuration={audioDuration} auditioning={auditioningProposal} cueBar={liveQueue?.executeAtBar} onScrub={scrubToBar} />
             <button className={`hero-play ${playing ? "playing" : ""}`} onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button>
           </section>
 
@@ -1089,7 +1231,7 @@ export function VoiceRemixStudio() {
               </div>
               <div className="playlist-scroll" ref={timelineScroll} data-active-section={active?.id ?? ""}>
                 <div className="track-label-spacer"><span>STEMS</span></div>
-                <div className="bar-ruler" style={{ width: TOTAL_BARS * BAR_PX }}>
+                <div className="bar-ruler" style={{ width: project.totalBars * BAR_PX }}>
                   {barLabels.map((bar) => <span key={bar} style={{ width: BAR_PX }}>{bar}</span>)}
                 </div>
                 {project.tracks.map((track) => {
@@ -1107,9 +1249,9 @@ export function VoiceRemixStudio() {
                       <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={auditionChanged ? "audition-note" : track.nearSilent ? "near-silent" : ""}>{auditionChanged ? (audibleTrack.enabled ? `Proposed · ${Math.round(audibleTrack.level * 100)}% gain` : "Proposed · muted") : track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
                       <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`} disabled={auditioningProposal}>{audibleTrack.enabled ? "M" : "○"}</button>
                     </div>
-                    <div className="track-lane" style={{ width: TOTAL_BARS * BAR_PX }}>
+                    <div className="track-lane" style={{ width: project.totalBars * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
-                      <TrackWaveform url={track.peaksUrl} color={track.color} width={TOTAL_BARS * BAR_PX} project={audibleProject} nearSilent={track.nearSilent} />
+                      <TrackWaveform url={track.peaksUrl} color={track.color} width={project.totalBars * BAR_PX} project={audibleProject} nearSilent={track.nearSilent} />
                       {renderedSections.map((section) => {
                         const state = sectionTrackState(audibleProject, section.id, track.id);
                         const automation = audibleProject.automation?.find((item) => item.sectionId === section.id && item.trackId === track.id);
@@ -1156,8 +1298,8 @@ export function VoiceRemixStudio() {
         </div>
 
         <footer className="player-bar">
-          <div className="mini-song"><CoverArt mini /><div><strong>Neon Pulse Loop</strong><span>{active?.label ?? "Ready"} · Suno stems</span></div><button>♡</button></div>
-          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{Math.floor(position * 4 * 60 / project.bpm / 60)}:{String(Math.floor(position * 4 * 60 / project.bpm) % 60).padStart(2, "0")}</span><input className="progress-track" style={{ "--progress": `${position / TOTAL_BARS * 100}%` } as React.CSSProperties} type="range" min="0" max={TOTAL_BARS - 0.001} step="0.01" value={position} onInput={(event) => scrubToBar(Number(event.currentTarget.value))} onChange={(event) => scrubToBar(Number(event.currentTarget.value))} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromPointer(event); }} aria-label="Playback position" aria-valuetext={`Bar ${Math.floor(position) + 1}`} /><span>1:59</span></div></div>
+          <div className="mini-song"><CoverArt mini /><div><strong>{projectTitle}</strong><span>{active?.label ?? "Ready"} · {project.tracks.length === 1 ? "Master mix" : "Imported stems"}</span></div><button>♡</button></div>
+          <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{formatOverviewTime(position / project.totalBars * audioDuration)}</span><input className="progress-track" style={{ "--progress": `${position / project.totalBars * 100}%` } as React.CSSProperties} type="range" min="0" max={project.totalBars - 0.001} step="0.01" value={position} onInput={(event) => scrubToBar(Number(event.currentTarget.value))} onChange={(event) => scrubToBar(Number(event.currentTarget.value))} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromPointer(event); }} aria-label="Playback position" aria-valuetext={`Bar ${Math.floor(position) + 1}`} /><span>{formatOverviewTime(audioDuration)}</span></div></div>
           <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
         </footer>
       </section>
