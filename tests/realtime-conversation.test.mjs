@@ -24,6 +24,7 @@ test("Malformed Realtime tool arguments fail closed", () => {
 
 test("Realtime persona sounds like a producer and preserves editor state language", () => {
   assert.match(VOICE_REMIX_SESSION_INSTRUCTIONS, /in-the-room music producer/);
+  assert.match(VOICE_REMIX_SESSION_INSTRUCTIONS, /Always reply in natural, conversational English/);
   assert.match(VOICE_REMIX_SESSION_INSTRUCTIONS, /queued means it will land on a future bar/);
   assert.match(VOICE_REMIX_SESSION_INSTRUCTIONS, /Never sound like customer support/);
   assert.match(VOICE_REMIX_TOOL_RESPONSE_INSTRUCTIONS, /A\/B preview and not committed/);

@@ -1032,7 +1032,7 @@ export function VoiceRemixStudio() {
             )}
             <div className="prompt-footer">
               <div className="suggestions">
-                {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
+                {["Move the final chorus 4 bars earlier", "Make the drums hit harder", "Mute the synth in both hooks", "Keep only bass and drums"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
               <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · press ↑ when done" : voiceState === "transcribing" ? "Voice Remix is deciding which editor tool to use…" : voiceState === "responding" ? "Voice Remix is speaking · tap ◼ to interrupt" : planning ? "Planning a reversible Music Diff…" : "Realtime conversation · editor tools · next-bar execution"}</small>
             </div>
