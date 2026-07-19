@@ -9,7 +9,7 @@ Rewrite the voiceover into your own speaking style. The lines below are prompts,
 | Time | Screen action | Voiceover prompt |
 |---|---|---|
 | 0:00–0:15 | Open on the playing multitrack editor; quickly mute/unmute drums | Generative music can make a song, but revising one precisely is still hard. DAWs give control, but expect production expertise. |
-| 0:15–0:30 | Show the five-stem project, switch briefly to the nine-stem vocal project, and flash the mapped-stem import panel before returning with **Judge demo** | Voice Remix starts from real audio: a full mix, one replacement stem, or a synchronized stem set. The creator keeps a visual editor and manual control. |
+| 0:15–0:30 | Show the five-stem project, switch briefly to the nine-stem vocal project, and flash the mapped-stem import panel before returning with **1-min demo** | Voice Remix starts from real audio: a full mix, one replacement stem, or a synchronized stem set. The creator keeps a visual editor and manual control. |
 | 0:30–0:47 | Click the microphone and say `Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged`; let the live transcript remain visible briefly | OpenAI Realtime streams the transcript while the music ducks instead of stopping. The editor sends GPT-5.6 the current playhead, selection, and project context. |
 | 0:47–1:10 | Hold on the Music Diff; point to `GPT-5.6-SOL`, MOVE, GAIN, and protected BASS | GPT-5.6 receives compact project context and returns Structured Output. The server validates every target and rebuilds trusted before/after values. |
 | 1:10–1:28 | Show ghost chorus position; deselect the drum operation | Nothing has changed yet. The creator can inspect the ghost preview and reject one part of a compound request. |

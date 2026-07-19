@@ -1320,7 +1320,7 @@ export function VoiceRemixStudio() {
         </div>
         <div className="nav-group">
           <div className="nav-item active" aria-current="page"><span>✦</span> Create</div>
-          <button className="nav-item judge-nav" onClick={startJudgeDemo}><span>▶</span> Judge demo</button>
+          <button className="nav-item judge-nav" onClick={startJudgeDemo}><span>▶</span> 1-min demo</button>
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
@@ -1365,10 +1365,10 @@ export function VoiceRemixStudio() {
 
         <div className="content-wrap">
           {judgeStep > 0 && (
-            <aside className={`judge-guide step-${judgeStep}`} aria-label="One-minute judge demo">
+            <aside className={`judge-guide step-${judgeStep}`} aria-label="One-minute guided demo">
               <div className="judge-progress" aria-hidden="true"><i className={judgeStep >= 1 ? "done" : ""} /><i className={judgeStep >= 2 ? "done" : ""} /><i className={judgeStep >= 3 ? "done" : ""} /></div>
               <div className="judge-copy">
-                <span className="overline">{judgeStep === 4 ? "JUDGE DEMO · COMPLETE" : `JUDGE DEMO · STEP ${judgeStep} OF 3`}</span>
+                <span className="overline">{judgeStep === 4 ? "GUIDED DEMO · COMPLETE" : `GUIDED DEMO · STEP ${judgeStep} OF 3`}</span>
                 <strong>{judgeStep === 1 ? "Hear the real multitrack arrangement" : judgeStep === 2 ? "Turn intent into an inspectable Music Diff" : judgeStep === 3 ? "A/B the proposal, then commit selectively" : "The edit is committed, reversible, and exportable"}</strong>
                 <p>{judgeStep === 1 ? "Start the five synchronized stems. The waveform and editor playhead use the same transport." : judgeStep === 2 ? FEATURED_DEMO_COMMAND : judgeStep === 3 ? "Current and Proposed share one playhead. The canonical project stays untouched until Apply selected." : "Try Undo/Redo, or open Export to render the committed arrangement as a stereo WAV."}</p>
               </div>
@@ -1377,7 +1377,7 @@ export function VoiceRemixStudio() {
                 {judgeStep === 2 && <button type="button" className="judge-primary" onClick={() => void advanceJudgeProposal()} disabled={planning}>{planning ? "Planning…" : "Preview with GPT-5.6 →"}</button>}
                 {judgeStep === 3 && <><button type="button" onClick={() => void setProposalAudition(true)} disabled={audioSwitching || auditioningProposal}>Hear proposed</button><button type="button" className="judge-primary" onClick={commitJudgeProposal} disabled={audioSwitching || !selectedProposalOperations.length}>Apply selected →</button></>}
                 {judgeStep === 4 && <><button type="button" onClick={undo} disabled={!canUndo}>Undo</button><button type="button" className="judge-primary" onClick={() => { setExportOpen(true); setJudgeStep(0); }}>Export WAV →</button></>}
-                <button type="button" className="judge-close" onClick={() => setJudgeStep(0)} aria-label="Close judge demo">×</button>
+                <button type="button" className="judge-close" onClick={() => setJudgeStep(0)} aria-label="Close guided demo">×</button>
               </div>
             </aside>
           )}

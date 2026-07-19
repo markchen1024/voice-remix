@@ -48,7 +48,7 @@ The repository is public, includes an MIT License for source and documentation, 
 
 ## 2. One-minute judge path
 
-1. Open the deployed app and choose **Judge demo**.
+1. Open the deployed app and choose **1-min demo**.
 2. Use **Start music** to verify that the demo uses five synchronized audio stems.
 3. Use **Preview with GPT-5.6** for the prefilled featured request.
 4. Verify the `GPT-5.6-SOL` source, two proposed operations, and protected `BASS` track.

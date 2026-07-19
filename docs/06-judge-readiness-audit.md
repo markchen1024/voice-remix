@@ -62,7 +62,7 @@ Estimated total: **33.5/40**. The complete public product loop is competitive; s
 ### 3. One-minute judge mode
 
 - [x] A compact three-step coach mark: Play → use the featured request → inspect and apply the Diff.
-- [x] A `Judge demo` action that restores the known-good arrangement and featured prompt.
+- [x] A user-facing `1-min demo` action that restores the known-good arrangement and featured prompt.
 - [x] Keep the normal editor available; do not turn the product into a slideshow.
 
 ### 4. Product truth and state integrity
