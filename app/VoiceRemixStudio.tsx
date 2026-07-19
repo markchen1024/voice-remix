@@ -9,6 +9,7 @@ import { createEditorContext } from "./editor-context";
 import { applyOperations, cloneProject, createLocalTransaction, describeOperation, sectionTrackState, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
+import { audioExportFilename, renderProjectToWav } from "./audio-export";
 import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeConversation, type RealtimeConversationClient, type RealtimeToolCall } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
@@ -261,6 +262,10 @@ export function VoiceRemixStudio() {
   const [importTarget, setImportTarget] = useState<TrackId>("drums");
   const [importBpm, setImportBpm] = useState(INITIAL_PROJECT.bpm);
   const [energyDrafts, setEnergyDrafts] = useState<Record<string, number>>({});
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportStatus, setExportStatus] = useState<"idle" | "rendering" | "ready" | "error">("idle");
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportError, setExportError] = useState("");
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
@@ -1079,18 +1084,41 @@ export function VoiceRemixStudio() {
     }
   };
 
-  const exportProject = () => {
-    const data = createProjectExport(project);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = projectExportFilename(projectTitle);
+    link.download = filename;
     document.body.append(link);
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
-    setActivity((items) => [{ title: "Project exported", detail: `${project.sections.length} sections · ${project.tracks.length} stems · version ${project.version}`, time: "NOW" }, ...items].slice(0, 5));
+  };
+
+  const exportProjectSnapshot = () => {
+    const data = createProjectExport(project);
+    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }), projectExportFilename(projectTitle));
+    setActivity((items) => [{ title: "Project snapshot exported", detail: `${project.sections.length} sections · ${project.tracks.length} tracks · version ${project.version}`, time: "NOW" }, ...items].slice(0, 5));
+    setExportOpen(false);
+  };
+
+  const exportAudio = async () => {
+    if (exportStatus === "rendering") return;
+    const exportProject = cloneProject(projectRef.current);
+    const exportDuration = audioDurationRef.current;
+    setExportStatus("rendering");
+    setExportProgress(0);
+    setExportError("");
+    try {
+      const wav = await renderProjectToWav(exportProject, exportDuration, { onProgress: setExportProgress });
+      downloadBlob(new Blob([wav], { type: "audio/wav" }), audioExportFilename(projectTitle));
+      setExportStatus("ready");
+      setActivity((items) => [{ title: "Audio mix exported", detail: `${formatOverviewTime(exportDuration)} WAV · ${exportProject.tracks.length} track${exportProject.tracks.length === 1 ? "" : "s"} · version ${exportProject.version}`, time: "NOW" }, ...items].slice(0, 5));
+    } catch (error) {
+      console.error("Audio export failed", error);
+      setExportStatus("error");
+      setExportError(error instanceof Error ? error.message : "The audible arrangement could not be rendered.");
+    }
   };
 
   const selected = project.sections.find((section) => section.id === selectedSection)!;
@@ -1168,7 +1196,22 @@ export function VoiceRemixStudio() {
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
             <button onClick={redo} disabled={!canRedo}>↷ Redo</button>
             <button className="soft-button" onClick={openImport}>Import audio</button>
-            <button className="export-button" onClick={exportProject}>Export <span>↓</span></button>
+            <div className="export-wrap">
+              <button className="export-button" onClick={() => setExportOpen((open) => !open)} aria-expanded={exportOpen} aria-haspopup="menu">{exportStatus === "rendering" ? `Rendering ${Math.round(exportProgress * 100)}%` : "Export"} <span>↓</span></button>
+              {exportOpen && (
+                <div className="export-menu" role="menu" aria-label="Export arrangement">
+                  <span className="overline">COMMITTED ARRANGEMENT</span>
+                  <button type="button" role="menuitem" onClick={() => void exportAudio()} disabled={exportStatus === "rendering"}>
+                    <i>WAV</i><span><strong>{exportStatus === "rendering" ? "Rendering audible mix…" : exportStatus === "ready" ? "WAV downloaded" : "Download audio mix"}</strong><small>Section moves, mutes, gain and energy exactly as committed.</small></span><b>{exportStatus === "rendering" ? `${Math.round(exportProgress * 100)}%` : "↓"}</b>
+                  </button>
+                  <button type="button" role="menuitem" onClick={exportProjectSnapshot} disabled={exportStatus === "rendering"}>
+                    <i>JSON</i><span><strong>Download project snapshot</strong><small>Versioned editor state for inspection and future restore.</small></span><b>↓</b>
+                  </button>
+                  {exportStatus === "rendering" && <div className="export-progress" aria-label={`Audio export ${Math.round(exportProgress * 100)} percent`}><i style={{ width: `${exportProgress * 100}%` }} /></div>}
+                  {exportError && <p role="alert">{exportError}</p>}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

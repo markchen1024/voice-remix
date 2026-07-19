@@ -28,6 +28,8 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /LIVE SESSION/);
   assert.match(html, /Talk to the arrangement\./);
   assert.match(html, /Import audio/);
+  assert.match(html, /aria-haspopup="menu"/);
+  assert.match(html, />Export<!-- -->/);
   assert.match(html, /VISUAL EDITOR/);
   assert.match(html, /aria-label="Playback position"/);
   assert.match(html, /type="range"/);
