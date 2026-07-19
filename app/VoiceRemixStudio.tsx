@@ -51,6 +51,7 @@ function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
   return null;
 }
 const DEMO_AUDIO_DURATION = 119.4;
+const FEATURED_DEMO_COMMAND = "Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.";
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
 function CoverArt({ mini = false }: { mini?: boolean }) {
@@ -266,6 +267,7 @@ export function VoiceRemixStudio() {
   const [exportStatus, setExportStatus] = useState<"idle" | "rendering" | "ready" | "error">("idle");
   const [exportProgress, setExportProgress] = useState(0);
   const [exportError, setExportError] = useState("");
+  const [judgeStep, setJudgeStep] = useState<0 | 1 | 2 | 3 | 4>(0);
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
@@ -709,6 +711,7 @@ export function VoiceRemixStudio() {
       setActivity((items) => [{ title: previousProposal ? "Refinement needs clarification" : "Needs clarification", detail: `“${input}” did not produce a supported edit`, time: "NOW" }, ...items].slice(0, 5));
     } else {
       setProposal(nextProposal);
+      if (judgeStep === 2) setJudgeStep(3);
       if (playingRef.current) queueProposalForNextBar(nextProposal);
       setActivity((items) => [{ title: previousProposal ? "Music Diff refined" : "Music Diff ready", detail: `${nextProposal.operations.length} operations · ${nextProposal.planner} · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
@@ -779,6 +782,7 @@ export function VoiceRemixStudio() {
     clearLiveQueue();
     const next = applyOperations(project, proposal.operations, true);
     commit(next, "Music Diff committed", selectedOperations.map((operation) => `${describeOperation(operation).verb} ${operation.targetLabel}`).join(" · "));
+    if (judgeStep === 3) setJudgeStep(4);
     setProposal(null);
     setAuditioningProposal(false);
   };
@@ -1017,7 +1021,7 @@ export function VoiceRemixStudio() {
     }
   };
 
-  const prepareImportedProject = (nextProject: Project, nextDuration: number, nextTitle: string, detail: string) => {
+  const prepareImportedProject = (nextProject: Project, nextDuration: number, nextTitle: string, detail: string, activityTitle = "Local audio imported") => {
     resetAudioRuntime();
     setPlaybackState(false);
     projectRef.current = nextProject;
@@ -1036,7 +1040,7 @@ export function VoiceRemixStudio() {
     setAudioDuration(nextDuration);
     setPosition(0);
     setSelectedSection(nextProject.sections[0].id);
-    setActivity((items) => [{ title: "Local audio imported", detail, time: "NOW" }, ...items].slice(0, 5));
+    setActivity((items) => [{ title: activityTitle, detail, time: "NOW" }, ...items].slice(0, 5));
     setImportOpen(false);
   };
 
@@ -1082,6 +1086,32 @@ export function VoiceRemixStudio() {
     } finally {
       setImportingAudio(false);
     }
+  };
+
+  const startJudgeDemo = () => {
+    releaseAllImportedAudio();
+    prepareImportedProject(cloneProject(INITIAL_PROJECT), DEMO_AUDIO_DURATION, "Neon Pulse Loop", "Known-good arrangement restored · featured request ready", "Judge demo ready");
+    setSelectedSection("chorus-2");
+    setCommand(FEATURED_DEMO_COMMAND);
+    setAssistantReply("");
+    setExportOpen(false);
+    setExportStatus("idle");
+    setJudgeStep(1);
+  };
+
+  const advanceJudgePlayback = async () => {
+    if (!playingRef.current) await togglePlay();
+    setJudgeStep(2);
+  };
+
+  const advanceJudgeProposal = async () => {
+    const nextProposal = await createProposal(FEATURED_DEMO_COMMAND);
+    if (nextProposal) setJudgeStep(3);
+  };
+
+  const commitJudgeProposal = () => {
+    applyProposal();
+    setJudgeStep(4);
   };
 
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -1178,6 +1208,7 @@ export function VoiceRemixStudio() {
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
           <button className="nav-item active"><span>✦</span> Create</button>
+          <button className="nav-item judge-nav" onClick={startJudgeDemo}><span>▶</span> Judge demo</button>
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
@@ -1216,6 +1247,23 @@ export function VoiceRemixStudio() {
         </header>
 
         <div className="content-wrap">
+          {judgeStep > 0 && (
+            <aside className={`judge-guide step-${judgeStep}`} aria-label="One-minute judge demo">
+              <div className="judge-progress" aria-hidden="true"><i className={judgeStep >= 1 ? "done" : ""} /><i className={judgeStep >= 2 ? "done" : ""} /><i className={judgeStep >= 3 ? "done" : ""} /></div>
+              <div className="judge-copy">
+                <span className="overline">{judgeStep === 4 ? "JUDGE DEMO · COMPLETE" : `JUDGE DEMO · STEP ${judgeStep} OF 3`}</span>
+                <strong>{judgeStep === 1 ? "Hear the real multitrack arrangement" : judgeStep === 2 ? "Turn intent into an inspectable Music Diff" : judgeStep === 3 ? "A/B the proposal, then commit selectively" : "The edit is committed, reversible, and exportable"}</strong>
+                <p>{judgeStep === 1 ? "Start the five synchronized stems. The waveform and editor playhead use the same transport." : judgeStep === 2 ? FEATURED_DEMO_COMMAND : judgeStep === 3 ? "Current and Proposed share one playhead. The canonical project stays untouched until Apply selected." : "Try Undo/Redo, or open Export to render the committed arrangement as a stereo WAV."}</p>
+              </div>
+              <div className="judge-actions">
+                {judgeStep === 1 && <button type="button" className="judge-primary" onClick={() => void advanceJudgePlayback()} disabled={audioSwitching}>{audioSwitching ? "Loading stems…" : "Start music →"}</button>}
+                {judgeStep === 2 && <button type="button" className="judge-primary" onClick={() => void advanceJudgeProposal()} disabled={planning}>{planning ? "Planning…" : "Preview with GPT-5.6 →"}</button>}
+                {judgeStep === 3 && <><button type="button" onClick={() => void setProposalAudition(true)} disabled={audioSwitching || auditioningProposal}>Hear proposed</button><button type="button" className="judge-primary" onClick={commitJudgeProposal} disabled={audioSwitching || !selectedProposalOperations.length}>Apply selected →</button></>}
+                {judgeStep === 4 && <><button type="button" onClick={undo} disabled={!canUndo}>Undo</button><button type="button" className="judge-primary" onClick={() => { setExportOpen(true); setJudgeStep(0); }}>Export WAV →</button></>}
+                <button type="button" className="judge-close" onClick={() => setJudgeStep(0)} aria-label="Close judge demo">×</button>
+              </div>
+            </aside>
+          )}
           <section className="create-card">
             <div className="create-glow" />
               <span className="ai-label"><i>●</i> LIVE SESSION · {playing ? "MUSIC RUNNING" : "READY"}</span>
