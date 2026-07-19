@@ -1,5 +1,7 @@
 # Voice Remix
 
+![Voice Remix — Say it. See it. Shape it.](public/og.png)
+
 **Say the change. See the diff. Keep control.**
 
 Voice Remix is a voice-first visual music arranger built for OpenAI Build Week 2026. It turns a natural-language request into a validated, inspectable music edit before changing the project. The browser then shows exactly which sections and stems will move, mute, or change gain, so the creator can accept only the parts they want.
