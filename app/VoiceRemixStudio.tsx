@@ -1387,7 +1387,10 @@ export function VoiceRemixStudio() {
               <h1>Talk to the arrangement.</h1>
               <p>Speak naturally while the music keeps playing. Edits land cleanly on the next bar.</p>
             <form className="prompt-box" onSubmit={runCommand}>
-              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceButtonLabel} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "↑" : voiceState === "responding" ? "◼" : voiceState !== "idle" ? "✦" : "🎙"}</button>
+              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceButtonLabel} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>
+                <span aria-hidden="true">{voiceState === "recording" ? "↑" : voiceState === "responding" ? "◼" : voiceState !== "idle" ? "✦" : "🎙"}</span>
+                <small aria-hidden="true">{voiceState === "recording" ? "SEND" : voiceState === "responding" ? "STOP" : voiceState === "connecting" ? "LINK" : voiceState === "transcribing" ? "THINK" : "TALK"}</small>
+              </button>
               <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState !== "idle"} />
               <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Listening…" : playing ? "Queue live edit" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
