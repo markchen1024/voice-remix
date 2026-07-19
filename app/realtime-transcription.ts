@@ -1,21 +1,65 @@
-export type RealtimeTranscriptionClient = {
+export type RealtimeToolCall = {
+  callId: string;
+  name: string;
+  arguments: Record<string, unknown>;
+};
+
+export type RealtimeConversationClient = {
   startTurn: () => void;
   stopTurn: () => void;
   close: () => void;
 };
 
-type RealtimeTranscriptionCallbacks = {
-  onDelta: (transcript: string) => void;
-  onCompleted: (transcript: string) => void;
+type RealtimeConversationCallbacks = {
+  onInputDelta: (transcript: string) => void;
+  onInputCompleted: (transcript: string) => void;
+  onAssistantDelta: (transcript: string) => void;
+  onAssistantCompleted: (transcript: string) => void;
+  onSpeakingChange: (speaking: boolean) => void;
+  onToolCall: (call: RealtimeToolCall) => Promise<unknown>;
   onError: (error: Error) => void;
+};
+
+type RealtimeResponseOutput = {
+  type?: string;
+  call_id?: string;
+  name?: string;
+  arguments?: string;
+  content?: Array<{ transcript?: string; text?: string }>;
 };
 
 type RealtimeServerEvent = {
   type?: string;
   delta?: string;
   transcript?: string;
+  text?: string;
+  response?: { output?: RealtimeResponseOutput[] };
   error?: { message?: string };
 };
+
+export function parseRealtimeToolCalls(response: RealtimeServerEvent["response"]): RealtimeToolCall[] {
+  return (response?.output ?? []).flatMap((item) => {
+    if (item.type !== "function_call" || !item.call_id || !item.name) return [];
+    try {
+      const parsed = JSON.parse(item.arguments || "{}") as unknown;
+      return [{
+        callId: item.call_id,
+        name: item.name,
+        arguments: parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {},
+      }];
+    } catch {
+      return [{ callId: item.call_id, name: item.name, arguments: {} }];
+    }
+  });
+}
+
+function responseTranscript(response: RealtimeServerEvent["response"]) {
+  return (response?.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .map((content) => content.transcript ?? content.text ?? "")
+    .join("")
+    .trim();
+}
 
 function sendEvent(channel: RTCDataChannel, event: object) {
   if (channel.readyState !== "open") throw new Error("Realtime data channel is not open");
@@ -39,10 +83,11 @@ function waitForChannelOpen(channel: RTCDataChannel) {
   });
 }
 
-export async function connectRealtimeTranscription(callbacks: RealtimeTranscriptionCallbacks): Promise<RealtimeTranscriptionClient> {
+export async function connectRealtimeConversation(callbacks: RealtimeConversationCallbacks): Promise<RealtimeConversationClient> {
   let peer: RTCPeerConnection | null = null;
   let channel: RTCDataChannel | null = null;
   let stream: MediaStream | null = null;
+  let remoteAudio: HTMLAudioElement | null = null;
 
   try {
     const tokenResponse = await fetch("/api/realtime-session", { method: "POST" });
@@ -60,26 +105,82 @@ export async function connectRealtimeTranscription(callbacks: RealtimeTranscript
 
     peer = new RTCPeerConnection();
     peer.addTrack(microphone, stream);
+    remoteAudio = document.createElement("audio");
+    remoteAudio.autoplay = true;
+    peer.addEventListener("track", (event) => {
+      if (!remoteAudio || !event.streams[0]) return;
+      remoteAudio.srcObject = event.streams[0];
+      void remoteAudio.play().catch(() => undefined);
+    });
     channel = peer.createDataChannel("oai-events");
 
-    let turnTranscript = "";
+    let inputTranscript = "";
+    let assistantTranscript = "";
+    let responseActive = false;
+    let closed = false;
+
     channel.addEventListener("message", (event) => {
-      try {
-        const message = JSON.parse(event.data) as RealtimeServerEvent;
-        if (message.type === "conversation.item.input_audio_transcription.delta" && typeof message.delta === "string") {
-          turnTranscript += message.delta;
-          callbacks.onDelta(turnTranscript);
-        } else if (message.type === "conversation.item.input_audio_transcription.completed") {
-          const transcript = (message.transcript ?? turnTranscript).trim();
-          turnTranscript = "";
-          if (transcript) callbacks.onCompleted(transcript);
-          else callbacks.onError(new Error("Realtime transcription was empty"));
-        } else if (message.type === "error") {
-          callbacks.onError(new Error(message.error?.message ?? "Realtime transcription failed"));
+      void (async () => {
+        try {
+          const message = JSON.parse(event.data) as RealtimeServerEvent;
+          if (message.type === "conversation.item.input_audio_transcription.delta" && typeof message.delta === "string") {
+            inputTranscript += message.delta;
+            callbacks.onInputDelta(inputTranscript);
+          } else if (message.type === "conversation.item.input_audio_transcription.completed") {
+            const transcript = (message.transcript ?? inputTranscript).trim();
+            inputTranscript = "";
+            if (transcript) callbacks.onInputCompleted(transcript);
+          } else if ((message.type === "response.output_audio_transcript.delta" || message.type === "response.output_text.delta") && typeof message.delta === "string") {
+            assistantTranscript += message.delta;
+            callbacks.onAssistantDelta(assistantTranscript);
+          } else if (message.type === "response.output_audio_transcript.done" || message.type === "response.output_text.done") {
+            const transcript = (message.transcript ?? message.text ?? assistantTranscript).trim();
+            if (transcript) {
+              assistantTranscript = transcript;
+              callbacks.onAssistantDelta(transcript);
+            }
+          } else if (message.type === "response.created") {
+            responseActive = true;
+            callbacks.onSpeakingChange(true);
+          } else if (message.type === "response.done") {
+            responseActive = false;
+            const toolCalls = parseRealtimeToolCalls(message.response);
+            if (!toolCalls.length) {
+              const transcript = assistantTranscript.trim() || responseTranscript(message.response);
+              if (transcript) callbacks.onAssistantCompleted(transcript);
+              assistantTranscript = "";
+              callbacks.onSpeakingChange(false);
+              return;
+            }
+
+            callbacks.onSpeakingChange(false);
+            for (const call of toolCalls) {
+              let output: unknown;
+              try {
+                output = await callbacks.onToolCall(call);
+              } catch (error) {
+                output = { ok: false, error: error instanceof Error ? error.message : "Editor tool failed" };
+              }
+              sendEvent(channel!, {
+                type: "conversation.item.create",
+                item: { type: "function_call_output", call_id: call.callId, output: JSON.stringify(output ?? { ok: true }) },
+              });
+            }
+            assistantTranscript = "";
+            sendEvent(channel!, {
+              type: "response.create",
+              response: {
+                output_modalities: ["audio"],
+                instructions: "Briefly confirm the actual tool result in the user's language. Mention the next-bar cue if the edit was queued. Do not add a new action.",
+              },
+            });
+          } else if (message.type === "error") {
+            callbacks.onError(new Error(message.error?.message ?? "Realtime conversation failed"));
+          }
+        } catch (error) {
+          callbacks.onError(error instanceof Error ? error : new Error("Invalid Realtime event"));
         }
-      } catch (error) {
-        callbacks.onError(error instanceof Error ? error : new Error("Invalid Realtime event"));
-      }
+      })();
     });
 
     peer.addEventListener("connectionstatechange", () => {
@@ -102,12 +203,19 @@ export async function connectRealtimeTranscription(callbacks: RealtimeTranscript
     await peer.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
     await waitForChannelOpen(channel);
 
-    let closed = false;
     return {
       startTurn() {
-        if (closed) throw new Error("Realtime transcription session is closed");
-        turnTranscript = "";
-        callbacks.onDelta("");
+        if (closed) throw new Error("Realtime conversation session is closed");
+        inputTranscript = "";
+        assistantTranscript = "";
+        callbacks.onInputDelta("");
+        callbacks.onAssistantDelta("");
+        if (responseActive) {
+          sendEvent(channel!, { type: "response.cancel" });
+          sendEvent(channel!, { type: "output_audio_buffer.clear" });
+          responseActive = false;
+          callbacks.onSpeakingChange(false);
+        }
         sendEvent(channel!, { type: "input_audio_buffer.clear" });
         microphone.enabled = true;
       },
@@ -115,6 +223,7 @@ export async function connectRealtimeTranscription(callbacks: RealtimeTranscript
         if (closed) return;
         microphone.enabled = false;
         sendEvent(channel!, { type: "input_audio_buffer.commit" });
+        sendEvent(channel!, { type: "response.create", response: { output_modalities: ["audio"] } });
       },
       close() {
         if (closed) return;
@@ -123,12 +232,15 @@ export async function connectRealtimeTranscription(callbacks: RealtimeTranscript
         channel?.close();
         peer?.close();
         stream?.getTracks().forEach((track) => track.stop());
+        if (remoteAudio) remoteAudio.srcObject = null;
+        callbacks.onSpeakingChange(false);
       },
     };
   } catch (error) {
     channel?.close();
     peer?.close();
     stream?.getTracks().forEach((track) => track.stop());
+    if (remoteAudio) remoteAudio.srcObject = null;
     throw error;
   }
 }

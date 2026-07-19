@@ -10,7 +10,7 @@ import { applyOperations, cloneProject, createLocalTransaction, describeOperatio
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
 import { mergeProposalRefinement } from "./proposal-refinement";
-import { connectRealtimeTranscription, type RealtimeTranscriptionClient } from "./realtime-transcription";
+import { connectRealtimeConversation, type RealtimeConversationClient, type RealtimeToolCall } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
 
@@ -40,6 +40,15 @@ const INITIAL_PROJECT: Project = {
 
 const BAR_PX = 58;
 const TOTAL_BARS = 59;
+
+function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
+  if (action === "play" || action === "pause" || action === "undo" || action === "redo") return { action };
+  if (action === "apply") return { action: "apply_proposal" };
+  if (action === "discard") return { action: "discard_proposal" };
+  if (action === "audition_current") return { action: "audition_current" };
+  if (action === "audition_proposed") return { action: "audition_proposed" };
+  return null;
+}
 const AUDIO_DURATION = 119.4;
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
@@ -241,7 +250,8 @@ export function VoiceRemixStudio() {
   const [proposal, setProposal] = useState<EditTransaction | null>(null);
   const [auditioningProposal, setAuditioningProposal] = useState(false);
   const [planning, setPlanning] = useState(false);
-  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "recording" | "transcribing">("idle");
+  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "recording" | "transcribing" | "responding">("idle");
+  const [assistantReply, setAssistantReply] = useState("");
   const [audioSwitching, setAudioSwitching] = useState(false);
   const [liveQueue, setLiveQueue] = useState<LiveCommandQueue | null>(null);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
@@ -257,8 +267,8 @@ export function VoiceRemixStudio() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const microphoneStream = useRef<MediaStream | null>(null);
   const voiceChunks = useRef<Blob[]>([]);
-  const realtimeTranscription = useRef<RealtimeTranscriptionClient | null>(null);
-  const voiceCommandHandler = useRef<(text: string) => void>(() => undefined);
+  const realtimeConversation = useRef<RealtimeConversationClient | null>(null);
+  const realtimeToolHandler = useRef<(call: RealtimeToolCall) => Promise<unknown>>(async () => ({ ok: false, error: "Editor is not ready" }));
   const voiceDuckingLevel = useRef<number | null>(null);
   const liveQueueRef = useRef<LiveCommandQueue | null>(null);
   const previousLivePosition = useRef(0);
@@ -301,7 +311,7 @@ export function VoiceRemixStudio() {
     buffers.current = {};
     if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
     microphoneStream.current?.getTracks().forEach((track) => track.stop());
-    realtimeTranscription.current?.close();
+    realtimeConversation.current?.close();
   }, []);
 
   function disposeArrangementPlayers() {
@@ -611,9 +621,9 @@ export function VoiceRemixStudio() {
     }
   };
 
-  const createProposal = async (rawInput: string) => {
+  const createProposal = async (rawInput: string): Promise<EditTransaction | null> => {
     const input = rawInput.trim();
-    if (!input || planning) return;
+    if (!input || planning) return null;
     const previousProposal = proposal;
     const planningProject = previousProposal ? applyOperations(project, previousProposal.operations) : project;
     const context = createEditorContext(planningProject, {
@@ -630,7 +640,7 @@ export function VoiceRemixStudio() {
     if (immediateCommand) {
       await executeImmediateEditorCommand(immediateCommand);
       setCommand("");
-      return;
+      return null;
     }
     if (auditioningProposal) {
       await activateAudioProject(project);
@@ -655,6 +665,7 @@ export function VoiceRemixStudio() {
     }
     setPlanning(false);
     setCommand("");
+    return nextProposal;
   };
 
   const runCommand = async (event: FormEvent) => {
@@ -750,13 +761,29 @@ export function VoiceRemixStudio() {
   }, [position]);
 
   useEffect(() => {
-    voiceCommandHandler.current = (text: string) => {
-      const transcript = text.trim();
-      setVoiceDucking(false);
-      setVoiceState("idle");
-      setCommand(transcript);
-      setActivity((items) => [{ title: "Realtime voice command", detail: `“${transcript}”`, time: "NOW" }, ...items].slice(0, 5));
-      void createProposal(transcript);
+    realtimeToolHandler.current = async (call: RealtimeToolCall) => {
+      if (call.name === "queue_music_edit") {
+        const request = typeof call.arguments.request === "string" ? call.arguments.request.trim() : "";
+        if (!request) return { ok: false, error: "The music edit request was empty" };
+        setCommand(request);
+        const transaction = await createProposal(request);
+        if (!transaction) return { ok: false, error: "The editor could not create a supported edit" };
+        const queue = liveQueueRef.current;
+        return {
+          ok: true,
+          status: queue?.transaction.id === transaction.id ? "queued_for_next_bar" : "ready_to_audition",
+          executeAtBar: queue?.transaction.id === transaction.id ? queue.executeAtBar + 1 : undefined,
+          summary: transaction.summary,
+          operationCount: transaction.operations.filter((operation) => operation.selected).length,
+        };
+      }
+      if (call.name === "control_editor") {
+        const editorCommand = realtimeEditorCommand(call.arguments.action);
+        if (!editorCommand) return { ok: false, error: "Unsupported editor action" };
+        await executeImmediateEditorCommand(editorCommand);
+        return { ok: true, status: editorCommand.action };
+      }
+      return { ok: false, error: `Unknown editor tool: ${call.name}` };
     };
   });
 
@@ -836,41 +863,55 @@ export function VoiceRemixStudio() {
 
   const startRealtimeVoiceCapture = async () => {
     setVoiceState("connecting");
-    let client = realtimeTranscription.current;
+    let client = realtimeConversation.current;
     if (!client) {
-      client = await connectRealtimeTranscription({
-        onDelta: (transcript) => setCommand(transcript),
-        onCompleted: (transcript) => voiceCommandHandler.current(transcript),
+      client = await connectRealtimeConversation({
+        onInputDelta: (transcript) => setCommand(transcript),
+        onInputCompleted: (transcript) => {
+          setCommand(transcript);
+          setActivity((items) => [{ title: "You said", detail: `“${transcript}”`, time: "NOW" }, ...items].slice(0, 5));
+        },
+        onAssistantDelta: (transcript) => setAssistantReply(transcript),
+        onAssistantCompleted: (transcript) => {
+          setAssistantReply(transcript);
+          setActivity((items) => [{ title: "Voice Remix replied", detail: transcript, time: "NOW" }, ...items].slice(0, 5));
+        },
+        onSpeakingChange: (speaking) => {
+          setVoiceDucking(speaking);
+          setVoiceState(speaking ? "responding" : "idle");
+        },
+        onToolCall: (call) => realtimeToolHandler.current(call),
         onError: (error) => {
-          console.error("Realtime voice command failed", error);
-          realtimeTranscription.current?.close();
-          realtimeTranscription.current = null;
+          console.error("Realtime voice conversation failed", error);
+          realtimeConversation.current?.close();
+          realtimeConversation.current = null;
           setVoiceDucking(false);
           setVoiceState("idle");
           setActivity((items) => [{ title: "Realtime voice failed", detail: "Use the microphone again or type the command", time: "NOW" }, ...items].slice(0, 5));
         },
       });
-      realtimeTranscription.current = client;
+      realtimeConversation.current = client;
     }
 
     setCommand("");
+    setAssistantReply("");
     setVoiceDucking(true);
     client.startTurn();
     setVoiceState("recording");
-    setActivity((items) => [{ title: "Realtime listening", detail: "Live transcript is streaming · click again to send", time: "NOW" }, ...items].slice(0, 5));
+    setActivity((items) => [{ title: "Live Copilot listening", detail: "Speak naturally · click again when done", time: "NOW" }, ...items].slice(0, 5));
   };
 
   const toggleVoiceCapture = async () => {
     if (voiceState === "recording") {
-      if (realtimeTranscription.current) {
+      if (realtimeConversation.current) {
         setVoiceDucking(false);
         setVoiceState("transcribing");
         try {
-          realtimeTranscription.current.stopTurn();
+          realtimeConversation.current.stopTurn();
         } catch (error) {
           console.error("Realtime voice stop failed", error);
-          realtimeTranscription.current.close();
-          realtimeTranscription.current = null;
+          realtimeConversation.current.close();
+          realtimeConversation.current = null;
           setVoiceState("idle");
         }
       } else if (mediaRecorder.current?.state === "recording") {
@@ -878,7 +919,7 @@ export function VoiceRemixStudio() {
       }
       return;
     }
-    if (voiceState !== "idle" || planning || audioSwitching) return;
+    if ((voiceState !== "idle" && voiceState !== "responding") || planning || audioSwitching) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
       await startFallbackVoiceCapture();
       return;
@@ -888,8 +929,8 @@ export function VoiceRemixStudio() {
       await startRealtimeVoiceCapture();
     } catch (error) {
       console.warn("Realtime voice unavailable; using upload fallback", error);
-      realtimeTranscription.current?.close();
-      realtimeTranscription.current = null;
+      realtimeConversation.current?.close();
+      realtimeConversation.current = null;
       setVoiceDucking(false);
       setVoiceState("idle");
       if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
@@ -926,7 +967,7 @@ export function VoiceRemixStudio() {
   }) : [];
   const affectedSectionIds = new Set(proposedSectionChanges.map((section) => section.id));
   const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
-  const voiceButtonLabel = voiceState === "recording" ? "Stop and transcribe voice command" : voiceState === "connecting" ? "Connecting realtime voice" : voiceState === "transcribing" ? "Finalizing voice command" : "Start voice command";
+  const voiceButtonLabel = voiceState === "recording" ? "Send voice turn" : voiceState === "responding" ? "Interrupt Voice Remix" : voiceState === "connecting" ? "Connecting realtime voice" : voiceState === "transcribing" ? "Voice Remix is thinking" : "Talk to Voice Remix";
 
   return (
     <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
@@ -966,15 +1007,22 @@ export function VoiceRemixStudio() {
               <h1>Talk to the arrangement.</h1>
               <p>Speak naturally while the music keeps playing. Edits land cleanly on the next bar.</p>
             <form className="prompt-box" onSubmit={runCommand}>
-              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceState === "recording" ? "Stop recording" : "Speak an edit"} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "■" : voiceState !== "idle" ? "✦" : "🎙"}</button>
+              <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceButtonLabel} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "↑" : voiceState === "responding" ? "◼" : voiceState !== "idle" ? "✦" : "🎙"}</button>
               <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState !== "idle"} />
               <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Listening…" : playing ? "Queue live edit" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
+            {assistantReply && (
+              <div className={`live-assistant-reply ${voiceState === "responding" ? "speaking" : ""}`} aria-live="polite">
+                <span><i /> VOICE REMIX</span>
+                <p>{assistantReply}</p>
+                {voiceState === "responding" && <div className="assistant-levels" aria-hidden="true"><i /><i /><i /><i /></div>}
+              </div>
+            )}
             <div className="prompt-footer">
               <div className="suggestions">
                 {["最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变", "鼓更有力量", "静音合成器", "只保留贝斯和鼓"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
-              <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · transcript appears as you speak" : voiceState === "transcribing" ? "Finalizing the voice command…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "OpenAI Realtime voice + GPT-5.6 planner"}</small>
+              <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · press ↑ when done" : voiceState === "transcribing" ? "Voice Remix is deciding which editor tool to use…" : voiceState === "responding" ? "Voice Remix is speaking · tap ◼ to interrupt" : planning ? "Planning a reversible Music Diff…" : "Realtime conversation · editor tools · next-bar execution"}</small>
             </div>
           </section>
 
