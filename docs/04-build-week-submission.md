@@ -37,7 +37,9 @@ Recorded on July 19, 2026:
 - Browser smoke test: the committed five-stem arrangement completed offline rendering and reached the `WAV downloaded` state.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Vercel production deployment: `https://voice-remix.vercel.app/`.
-- Public browser smoke test: 45 section players loaded, transport advanced, GPT-5.6 returned two operations with protected `BASS`, Apply enabled Undo, and the browser logged no errors.
+- Public browser smoke test: the five-stem project loaded 45 section players and the nine-stem project loaded 108; both transports advanced with zero unexpected muted players.
+- Public judge-flow smoke test: `GPT-5.6-SOL` returned two operations with protected `BASS`; Proposed audition, Apply, Undo, and Redo all completed, and the browser logged no errors.
+- Public import smoke test: full-song, individual-stem, and mapped synchronized-stem workflows are present in the deployed build.
 - Public `/api/realtime-session` smoke test: HTTP 200 with an expiring credential present; the credential value was not logged.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
 - GitHub CLI: authenticated as `markchen1024` with admin access to the public repository.
@@ -129,8 +131,8 @@ Do not show API keys, browser bookmarks, private account data, local file paths,
 - [x] Live deployment loads without an application login at `https://voice-remix.vercel.app/`.
 - [x] Server deployment has encrypted `OPENAI_API_KEY` and `OPENAI_MODEL`; neither appears in browser source.
 - [x] Featured command returns `GPT-5.6-SOL`, not `LOCAL`.
-- [x] Playback works after a user gesture; 45 scheduled section players load from the five synchronized stems.
-- [x] Apply, Discard, Undo, Redo, mute, and gain pass local regression; public Apply enabled Undo during the judge-flow smoke test.
+- [x] Playback works after a user gesture; 45 scheduled players load for the five-stem project and 108 for the nine-stem project, with zero unexpected muted players.
+- [x] Apply, Discard, Undo, Redo, mute, and gain pass local regression; public Proposed audition, Apply, Undo, and Redo passed during the judge-flow smoke test.
 - [x] The committed five-stem arrangement renders offline and reaches the WAV download completion state.
 - [ ] YouTube video is public, audible, legible, and shorter than three minutes.
 - [ ] Devpost description and category are complete.

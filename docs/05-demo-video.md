@@ -9,7 +9,7 @@ Rewrite the voiceover into your own speaking style. The lines below are prompts,
 | Time | Screen action | Voiceover prompt |
 |---|---|---|
 | 0:00–0:15 | Open on the playing multitrack editor; quickly mute/unmute drums | Generative music can make a song, but revising one precisely is still hard. DAWs give control, but expect production expertise. |
-| 0:15–0:30 | Show the five stems, real waveforms, ruler, and playhead | Voice Remix lets a creator ask for a musical change in ordinary language while keeping visual and manual control. |
+| 0:15–0:30 | Show the five-stem project, switch briefly to the nine-stem vocal project, and flash the mapped-stem import panel before returning with **Judge demo** | Voice Remix starts from real audio: a full mix, one replacement stem, or a synchronized stem set. The creator keeps a visual editor and manual control. |
 | 0:30–0:47 | Click the microphone and say `Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged`; let the live transcript remain visible briefly | OpenAI Realtime streams the transcript while the music ducks instead of stopping. The editor sends GPT-5.6 the current playhead, selection, and project context. |
 | 0:47–1:10 | Hold on the Music Diff; point to `GPT-5.6-SOL`, MOVE, GAIN, and protected BASS | GPT-5.6 receives compact project context and returns Structured Output. The server validates every target and rebuilds trusted before/after values. |
 | 1:10–1:28 | Show ghost chorus position; deselect the drum operation | Nothing has changed yet. The creator can inspect the ghost preview and reject one part of a compound request. |
@@ -35,15 +35,17 @@ Rewrite the voiceover into your own speaking style. The lines below are prompts,
 
 Before recording, verify:
 
-1. The proposal source reads `GPT-5.6-SOL`.
-2. The featured request creates exactly a chorus move and drum gain operation.
-3. `BASS` is displayed as protected.
-4. The ghost clip appears before Apply.
-5. Deselecting one operation changes what Apply commits.
-6. Undo and Redo both restore the expected timeline state.
-7. Partial transcript text appears before the voice turn completes.
-8. `Push the drums a little harder` leaves one rebased DRUMS gain operation, and `Apply it` commits it.
-9. No fallback/error messages are visible in the final take.
+1. Both the five-stem and nine-stem demo projects load and play.
+2. The import panel visibly includes mapped synchronized-stem project creation.
+3. The proposal source reads `GPT-5.6-SOL`.
+4. The featured request creates exactly a chorus move and drum gain operation.
+5. `BASS` is displayed as protected.
+6. The ghost clip appears before Apply.
+7. Deselecting one operation changes what Apply commits.
+8. Undo and Redo both restore the expected timeline state.
+9. Partial transcript text appears before the voice turn completes.
+10. `Push the drums a little harder` leaves one rebased DRUMS gain operation, and `Apply it` commits it.
+11. No fallback/error messages are visible in the final take.
 
 ## Resilient recording plan
 

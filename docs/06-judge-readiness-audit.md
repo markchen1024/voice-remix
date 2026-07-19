@@ -49,7 +49,8 @@ Estimated total: **33.5/40**. The complete public product loop is competitive; s
 
 - [x] Deploy a stable URL with server-side `OPENAI_API_KEY` and `OPENAI_MODEL`: `https://voice-remix.vercel.app/`.
 - [x] Verify public playback, GPT-5.6 planning, Apply/Undo, and Realtime session creation without an application login.
-- [ ] Keep the deployment available free of charge through the judging period and repeat the smoke test before submission.
+- [x] Repeat the full public smoke test on July 19: 5/9-stem playback, GPT-5.6 Music Diff, Proposed audition, Apply, Undo/Redo, import UI, and Realtime credential creation passed with no browser errors.
+- [ ] Keep the deployment available free of charge through the judging period.
 
 ### 2. Downloadable audible result
 
