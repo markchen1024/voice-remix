@@ -1,6 +1,6 @@
 # Voice Remix — Build Week Submission Workbook
 
-> Updated: 2026-07-18
+> Updated: 2026-07-19
 > Deadline: Tuesday, July 21, 2026 at 5:00 PM PDT (Wednesday, July 22 at 10:00 AM AEST)
 
 This is an internal completion worksheet, not finished Devpost copy. Rewrite the narrative fields in your own voice before submitting. OpenAI's participant guidance explicitly warns against submitting an AI-written project description unchanged.
@@ -9,12 +9,12 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 
 | Requirement | Status | Next action |
 |---|---|---|
-| Working, non-trivial implementation | Verified locally | Production build, lint, and 10/10 tests passed on July 18 |
+| Working, non-trivial implementation | Verified locally | Production build, lint, and 50/50 tests passed on July 19 |
 | Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
-| Repository with setup and sample data | Done locally; remote blocked | Fix/create the intended GitHub repository, then push the latest commits |
-| Relevant repository license | Needs entrant decision | Add a license before making the repository public |
+| Repository with setup and sample data | Connected | Push the final documentation commit to `markchen1024/voice-remix` |
+| Relevant repository license | Done | Source and docs use MIT; demo media is explicitly excluded |
 | Private repository judge access | Conditional | Invite both official judge addresses if it stays private |
 | Public demo URL | Workspace blocked | Sites reports that hosting is not enabled for this workspace; use an enabled workspace or another host |
 | Public YouTube demo under 3 minutes | Pending recording | Follow `docs/05-demo-video.md` |
@@ -30,22 +30,22 @@ If the repository remains private, share it with:
 
 ## Current verification snapshot
 
-Recorded on July 18, 2026:
+Recorded on July 19, 2026:
 
 - `npm run lint`: passed.
-- `npm test`: production build passed; 10 tests passed and 0 failed.
+- `npm test`: production build passed; 50 tests passed and 0 failed.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
-- Git push: blocked because that repository is not visible to the currently authenticated GitHub account (`markchencw`).
+- GitHub CLI: authenticated as `markchen1024` with admin access to the repository.
 
-Resolve the repository owner/name deliberately; do not create a duplicate under the wrong account. After resolving it, push commits `4d22e21` and `965a1c3` (and later commits) before recording the final video.
+The repository is ready to be made public after this open-source preparation commit is pushed.
 
 ## 2. One-minute judge path
 
 1. Open the deployed app and press Play.
 2. Mute and unmute a stem to verify that the demo uses synchronized audio tracks.
-3. Enter `最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变`.
+3. Enter `Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged`.
 4. Verify the `GPT-5.6-SOL` source, two proposed operations, and protected `BASS` track.
 5. Deselect the drum-gain operation, then apply only the section move.
 6. Press Undo and Redo.
@@ -65,7 +65,7 @@ Use these facts to write the final description yourself.
 ### What it does
 
 - Plays five synchronized stems from a real demo arrangement.
-- Accepts spoken or typed Chinese/English edit requests.
+- Accepts spoken or typed music-edit requests and replies in concise studio English.
 - Uses GPT-5.6 Sol to translate contextual requests into constrained music operations.
 - Shows a Music Diff, protected stems, before/after values, assumptions, and ghost timeline preview.
 - Lets the user accept only selected operations, discard the proposal, Undo, or Redo.

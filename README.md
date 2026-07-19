@@ -17,10 +17,8 @@ Voice Remix sits between those two experiences. GPT-5.6 interprets creative inte
 Enter or speak:
 
 ```text
-最后一遍副歌提前 4 小节，鼓更强，但贝斯不要变
+Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.
 ```
-
-The request means: “Move the final chorus four bars earlier and make the drums stronger, but keep the bass unchanged.”
 
 Voice Remix then:
 
@@ -138,13 +136,13 @@ The API key remains server-side. Do not expose it through a `NEXT_PUBLIC_` varia
 The fastest test takes about one minute:
 
 1. Start playback and mute/unmute a stem to confirm real multitrack audio.
-2. Enter the featured compound request above.
+2. Enter or speak the featured compound request above.
 3. Confirm that the Music Diff header says `GPT-5.6-SOL`.
 4. Confirm there are two operations and `BASS` is protected.
 5. Deselect the drum-gain operation.
 6. Apply only the chorus move and inspect the timeline.
 7. Use Undo, then Redo.
-8. Repeat with `只保留贝斯和鼓` (“only keep bass and drums”).
+8. Repeat with `Keep only bass and drums in both hooks`.
 
 If the API is unavailable, the header says `LOCAL` and the deterministic fallback still demonstrates the transaction and safety model.
 
@@ -207,6 +205,12 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Inspectable Music Diff workflow | `2f149d9` |
 | GPT-5.6 planner integration | `730590b` |
 | Reliable Undo/Redo | `482b02a` |
+| Realtime voice copilot conversation | `b82a810` |
+| Beat-synchronous live edit queue | `0106d53` |
+| Source-derived master waveform | `6377b64` |
+| Repeated-hook mixer synchronization | `fecce8c` |
+| Studio-producer voice persona | `4eab39f` |
+| English-first voice experience | `3d8ed64` |
 
 ## Sample media and third-party disclosure
 
@@ -214,7 +218,7 @@ The repository includes the demo arrangement **Neon Pulse Loop**, exported as st
 
 The entrant must confirm that their Suno plan and the generated track permit repository distribution, public demo playback, and use in the submission video before final submission. No Suno logos or copied interface assets are included.
 
-Open-source dependencies and their licenses are recorded in `package-lock.json`. The repository license must be chosen by the entrant before making the repository public.
+The source code and documentation are available under the [MIT License](LICENSE). The included demo media is explicitly excluded from that license; see the [demo media license notice](ASSET_LICENSE.md) and [asset provenance note](public/audio/neon-pulse-loop/README.md).
 
 ## Current limitations
 

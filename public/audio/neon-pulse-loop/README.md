@@ -2,7 +2,7 @@
 
 Imported from Suno Auto Split for the Voice Remix demo.
 
-Asset provenance: generated from the entrant's own Suno account and exported by the entrant. Before public distribution or submission, the entrant must confirm that their Suno plan and applicable terms permit repository distribution, public demo playback, and inclusion in the demo video. This note records provenance; it is not a license grant.
+Asset provenance: generated from the entrant's own Suno account and exported by the entrant. The assets are included solely so judges and developers can run and evaluate Voice Remix. They are not covered by the repository's MIT License; see [`ASSET_LICENSE.md`](../../../ASSET_LICENSE.md). This note records provenance and is not a general license grant.
 
 - Source: 48 kHz stereo WAV stems
 - Browser audio: 192 kbps MP3

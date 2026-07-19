@@ -15,7 +15,7 @@ The demo edits imported stems and arrangement metadata; it does not claim to syn
 5. The app normalizes and validates the transaction without changing project history.
 6. Current remains audible until the user chooses Proposed.
 7. Proposed switches the one shared playback session at a deterministic comparison bar.
-8. Apply selected—or the voice command “就这样”—commits one atomic history entry. Discard restores Current without a history entry.
+8. Apply selected—or the voice command “Apply it”—commits one atomic history entry. Discard restores Current without a history entry.
 
 ## State machine
 
@@ -53,7 +53,7 @@ The demo edits imported stems and arrangement metadata; it does not claim to syn
 - Applying a proposal creates exactly one undo step; discarding creates none.
 - Voice capture visibly enters Recording and Transcribing states, produces a transcript, and automatically creates a Music Diff.
 - Partial Realtime transcript text is visible before the turn completes.
-- “播放最后一遍副歌”, “循环这一段”, and “暂停” control the Transport without creating a Music Diff.
-- “鼓再强一点” refines the existing DRUMS gain operation; “就这样” commits it as one undo step.
+- “Play the final chorus”, “Loop this section”, and “Pause” control the Transport without creating a Music Diff.
+- “Push the drums a little harder” refines the existing DRUMS gain operation; “Apply it” commits it as one undo step.
 - Every Diff operation is audible: move, mute/unmute, gain, and section energy.
 - Section-specific stem edits remain local to their named section and appear directly on the matching timeline clip as `MUTED`, `ON`, or a gain percentage.
