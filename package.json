@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:vercel": "next build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/ai-planner.test.mjs tests/audio-arrangement.test.mjs tests/audio-export.test.mjs tests/audio-mixer.test.mjs tests/edit-transactions.test.mjs tests/editor-command-router.test.mjs tests/editor-context.test.mjs tests/live-command-queue.test.mjs tests/local-audio-import.test.mjs tests/master-waveform.test.mjs tests/project-export.test.mjs tests/project-history.test.mjs tests/proposal-refinement.test.mjs tests/realtime-conversation.test.mjs tests/realtime-session-route.test.mjs tests/rendered-html.test.mjs tests/transcribe-route.test.mjs tests/waveform-peaks.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
