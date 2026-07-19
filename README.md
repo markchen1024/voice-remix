@@ -55,6 +55,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Automatic audition seek to one bar before the earliest affected section
 - Atomic Apply and Discard
 - Undo/Redo history with branch invalidation after a new edit
+- Browser-rendered stereo WAV export of the committed arrangement, including section moves, mutes, gain, and section energy
 - Versioned `.voice-remix.json` project export with source/destination section mapping
 - Deterministic local planner when the API is unavailable
 
@@ -219,6 +220,8 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Studio-producer voice persona | `4eab39f` |
 | English-first voice experience | `3d8ed64` |
 | Browser-local song and stem import | `0fec6c3` |
+| Offline WAV render engine | `6a654e4` |
+| Committed-arrangement WAV export | `852c89d` |
 
 ## Sample media and third-party disclosure
 
@@ -231,10 +234,9 @@ The source code and documentation are available under the [MIT License](LICENSE)
 ## Current limitations
 
 - Demo section boundaries are initialized metadata; full-song imports receive clearly labeled estimated sections rather than automatic musical segmentation.
-- Section moves are audible during browser playback and redraw source-mapped waveforms, but do not render a new downloadable mix yet.
 - Realtime voice requires WebRTC, microphone permission, and OpenAI API access; request-based transcription and text remain fallbacks.
 - The local fallback supports a smaller command set than GPT-5.6.
-- Imported audio is session-local and is not persisted after reload. Automatic stem separation, rendered mix download, and DAW export remain post-submission work.
+- Imported audio is session-local and is not persisted after reload. Automatic stem separation and DAW project export remain post-submission work.
 
 ## Project documents
 

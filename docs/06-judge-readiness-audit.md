@@ -36,12 +36,12 @@ The differentiator is not merely connecting an LLM to editor controls. It is the
 
 | Criterion | Current | Evidence | Main deduction |
 |---|---:|---|---|
-| Technological Implementation | 8/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, 53 tests | No rendered-audio output; some PRD operations remain unimplemented |
-| Design | 6.5/10 | Polished editor, Music Diff, A/B, ghost timeline, live cue | No public judge URL; no guided first-run path; workflow ends at JSON export |
-| Potential Impact | 7/10 | Clear problem for taste-rich creators who do not use DAWs | Import and final delivery are not yet strong enough to demonstrate a repeatable real-user workflow |
+| Technological Implementation | 8.5/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, offline WAV renderer, 56 tests | Some PRD operations remain unimplemented |
+| Design | 7/10 | Polished editor, Music Diff, A/B, ghost timeline, live cue, finished WAV delivery | No public judge URL or guided first-run path |
+| Potential Impact | 7.5/10 | Clear problem for taste-rich creators who do not use DAWs; import-to-edit-to-download loop now closes | Batch stem intake and persistence are still incomplete |
 | Quality of the Idea | 8.5/10 | “Git diff for music” plus voice and beat-synchronous execution is distinct | The submission must foreground this trust model rather than look like a thin AI editor wrapper |
 
-Estimated total: **30/40**. The concept is competitive; product closure and submission access are the limiting factors.
+Estimated total: **31.5/40**. The concept and core loop are competitive; public access and first-run guidance are now the limiting factors.
 
 ## P0 — required before recording the final demo
 
@@ -53,10 +53,10 @@ Estimated total: **30/40**. The concept is competitive; product closure and subm
 
 ### 2. Downloadable audible result
 
-- Export the committed arrangement as WAV in the browser.
-- Keep project JSON as a secondary “project snapshot” export.
-- Render section placement, mute, gain, and section energy exactly as heard.
-- Show deterministic progress and a useful error if rendering fails.
+- [x] Export the committed arrangement as WAV in the browser.
+- [x] Keep project JSON as a secondary “project snapshot” export.
+- [x] Render section placement, mute, gain, and section energy exactly as heard.
+- [x] Show deterministic progress and a useful error if rendering fails.
 
 ### 3. One-minute judge mode
 
@@ -108,4 +108,3 @@ The final submission is not ready until all of the following are true:
 - no visible control is inert;
 - demo video is under three minutes, public on YouTube, and mostly shows the real product;
 - repository, `/feedback` Session ID, screenshots, licensing confirmation, and Devpost fields are complete.
-

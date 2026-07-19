@@ -9,7 +9,7 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 
 | Requirement | Status | Next action |
 |---|---|---|
-| Working, non-trivial implementation | Verified locally | Production build, lint, and 53/53 tests passed on July 19 |
+| Working, non-trivial implementation | Verified locally | Production build, lint, and 56/56 tests passed on July 19 |
 | Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
@@ -33,7 +33,8 @@ If the repository remains private, share it with:
 Recorded on July 19, 2026:
 
 - `npm run lint`: passed.
-- `npm test`: production build passed; 53 tests passed and 0 failed.
+- `npm test`: production build passed; 56 tests passed and 0 failed.
+- Browser smoke test: the committed five-stem arrangement completed offline rendering and reached the `WAV downloaded` state.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
@@ -70,6 +71,7 @@ Use these facts to write the final description yourself.
 - Uses GPT-5.6 Sol to translate contextual requests into constrained music operations.
 - Shows a Music Diff, protected stems, before/after values, assumptions, and ghost timeline preview.
 - Lets the user accept only selected operations, discard the proposal, Undo, or Redo.
+- Downloads the committed audible arrangement as a stereo WAV, with project JSON available as a secondary snapshot.
 - Falls back to a smaller deterministic local planner when the API is unavailable.
 
 ### How it was built
@@ -104,7 +106,6 @@ Use these facts to write the final description yourself.
 
 ### Next steps
 
-- Downloadable rendered audio for the committed arrangement.
 - Public judge deployment and a compact first-run demo path.
 - Batch stem mapping and automatic section analysis.
 - Persistent projects, collaboration, and shareable edit histories.
@@ -121,12 +122,13 @@ Do not show API keys, browser bookmarks, private account data, local file paths,
 
 ## 5. Final verification checklist
 
-- [ ] `npm ci`, `npm run lint`, and `npm test` pass from a clean checkout.
+- [x] `npm run lint` and `npm test` pass locally; run `npm ci` once more from the final public checkout.
 - [ ] Live deployment loads in a signed-out/incognito window.
 - [ ] Server deployment has `OPENAI_API_KEY` and `OPENAI_MODEL`; neither appears in browser source.
 - [ ] Featured command returns `GPT-5.6-SOL`, not `LOCAL`.
 - [ ] Playback works only after a user gesture and all five stems remain synchronized.
 - [ ] Apply, Discard, Undo, Redo, mute, and gain work.
+- [x] The committed five-stem arrangement renders offline and reaches the WAV download completion state.
 - [ ] YouTube video is public, audible, legible, and shorter than three minutes.
 - [ ] Devpost description and category are complete.
 - [ ] `/feedback` Session ID is saved in the submission.
