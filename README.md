@@ -34,6 +34,8 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 
 ## What is working
 
+- Local full-song import as a one-lane `MASTER MIX`, with browser-decoded duration, level analysis, and real waveform peaks
+- Local individual-stem replacement for Drums, Percussion, Bass, Synth, and FX with synchronized-duration validation
 - Five synchronized real audio stems in the browser
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
@@ -131,18 +133,21 @@ npm run dev
 
 The API key remains server-side. Do not expose it through a `NEXT_PUBLIC_` variable or commit an `.env` file.
 
+Use **Import audio** in the header or sidebar to open a local MP3, WAV, M4A, AAC, OGG, FLAC, or WebM file. A full song becomes a single master-mix project with estimated sections. An individual stem replaces the selected lane and must match the current arrangement duration. Decoding and waveform analysis happen locally in the browser; the audio is not uploaded or persisted.
+
 ## Judge test path
 
 The fastest test takes about one minute:
 
 1. Start playback and mute/unmute a stem to confirm real multitrack audio.
-2. Enter or speak the featured compound request above.
-3. Confirm that the Music Diff header says `GPT-5.6-SOL`.
-4. Confirm there are two operations and `BASS` is protected.
-5. Deselect the drum-gain operation.
-6. Apply only the chorus move and inspect the timeline.
-7. Use Undo, then Redo.
-8. Repeat with `Keep only bass and drums in both hooks`.
+2. Open **Import audio** to inspect the full-song and individual-stem local workflows, then close it to keep the prepared demo arrangement.
+3. Enter or speak the featured compound request above.
+4. Confirm that the Music Diff header says `GPT-5.6-SOL`.
+5. Confirm there are two operations and `BASS` is protected.
+6. Deselect the drum-gain operation.
+7. Apply only the chorus move and inspect the timeline.
+8. Use Undo, then Redo.
+9. Repeat with `Keep only bass and drums in both hooks`.
 
 If the API is unavailable, the header says `LOCAL` and the deterministic fallback still demonstrates the transaction and safety model.
 
@@ -161,6 +166,7 @@ npm test
 - selective atomic application
 - Undo/Redo history branching
 - server rendering
+- local audio analysis, full-song project creation, and stem replacement
 - waveform duration and near-silent stem handling
 
 ## How Codex and GPT-5.6 were used
@@ -174,6 +180,7 @@ Codex helped:
 - compare the product against generative music tools and DAWs;
 - design and iterate the Suno-inspired visual editor;
 - import and analyze real stems and generate accurate waveform envelopes;
+- add a private, browser-only import workflow for complete songs and synchronized stems;
 - implement the transaction domain, Music Diff, ghost preview, API route, validation, and history;
 - diagnose UI and interaction bugs from screenshots;
 - add tests, documentation, and frequent milestone commits.
@@ -211,6 +218,7 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Repeated-hook mixer synchronization | `fecce8c` |
 | Studio-producer voice persona | `4eab39f` |
 | English-first voice experience | `3d8ed64` |
+| Browser-local song and stem import | `0fec6c3` |
 
 ## Sample media and third-party disclosure
 
@@ -222,11 +230,11 @@ The source code and documentation are available under the [MIT License](LICENSE)
 
 ## Current limitations
 
-- Section boundaries are initialized demo metadata, not automatic audio analysis.
+- Demo section boundaries are initialized metadata; full-song imports receive clearly labeled estimated sections rather than automatic musical segmentation.
 - Section moves are audible during browser playback and redraw source-mapped waveforms, but do not render a new downloadable mix yet.
 - Realtime voice requires WebRTC, microphone permission, and OpenAI API access; request-based transcription and text remain fallbacks.
 - The local fallback supports a smaller command set than GPT-5.6.
-- User upload, automatic stem separation, rendered mix download, and DAW export remain post-submission work.
+- Imported audio is session-local and is not persisted after reload. Automatic stem separation, rendered mix download, and DAW export remain post-submission work.
 
 ## Project documents
 
