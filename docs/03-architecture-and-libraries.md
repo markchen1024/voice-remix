@@ -1,6 +1,6 @@
 # Voice Remix — Implemented Architecture and Library Decisions
 
-> Updated: 2026-07-18
+> Updated: 2026-07-19
 > Scope: the working Build Week submission, not future roadmap items
 
 ## 1. Architecture decision
@@ -53,7 +53,9 @@ Tone.js transport    Editor Context
 - operation selection, Apply, and Discard;
 - timeline, waveform, playhead, inspector, and history UI;
 - synchronized Tone.js stem players; and
-- mute, gain, tempo, playback, Undo, and Redo controls.
+- mute, gain, tempo, playback, Undo, and Redo controls;
+- browser-local full-mix, individual-stem, and mapped synchronized-stem import; and
+- committed-arrangement WAV and project-snapshot export.
 
 The browser never receives the standard OpenAI API key.
 
@@ -145,7 +147,7 @@ Preview is intentionally non-mutating. Ghost clips are calculated from selected 
 
 ## 5. Audio and waveform design
 
-- Five shared `ToneAudioBuffer` sources feed section-level `Player` instances on one `Transport`.
+- One shared `ToneAudioBuffer` source per imported stem feeds section-level `Player` instances on one `Transport`.
 - Each scheduled player carries its section ID, so section-scoped mute and gain changes update the live mixer without reloading buffers or restarting transport.
 - Each section preserves an immutable source-bar position and a mutable destination-bar position.
 - Applying a section move reschedules the matching source region for every stem at the new destination, so the edit is audible without rewriting source files.
@@ -159,8 +161,8 @@ Preview is intentionally non-mutating. Ghost clips are calculated from selected 
 
 | Concern | Choice | Why |
 |---|---|---|
-| UI and routing | React 19, TypeScript, vinext | Supplied Build Week/Sites architecture with client and server routes |
-| Deployment runtime | Vite, Cloudflare plugin, Sites adapter | Cloudflare Worker-compatible output |
+| UI and routing | React 19, TypeScript, vinext | Client studio plus server API routes with fast local Vite builds |
+| Deployment runtime | Vite locally; Next-compatible Vercel build | Public no-login deployment while retaining the vinext development workflow |
 | Audio | Tone.js | Synchronized musical transport and Web Audio playback |
 | OpenAI | `openai` JavaScript SDK | Responses API and typed server integration |
 | Validation | Zod | Structured Outputs schema and runtime parsing |
@@ -184,7 +186,7 @@ The working submission does not use Zustand, Immer, dnd-kit, Vitest, React Testi
 - API keys are server-only environment variables.
 - `.env*` files are ignored except the empty `.env.example` template.
 - Model outputs are never applied directly.
-- The API accepts project metadata, not arbitrary code or audio uploads.
+- The planning API accepts project metadata, not arbitrary code or raw audio; only the bounded transcription fallback accepts a short voice recording.
 - User input is treated as data by the planner instruction.
 - The response endpoint does not echo internal exception details.
 
@@ -201,7 +203,8 @@ The current suite verifies:
 - Undo/Redo and future-branch clearing;
 - server-rendered studio content;
 - waveform resolution and source duration;
-- near-silent waveform handling; and
+- near-silent waveform handling;
+- full-song import, individual replacement, batch filename mapping, duplicate detection, and synchronized-duration validation;
 - source-preserving section-to-playback scheduling;
 - Realtime session configuration and ephemeral credential isolation;
 - Editor Context grounding and sanitization;
@@ -214,11 +217,11 @@ The current suite verifies:
 
 The submission does not claim these are implemented:
 
-- rendered mix download and destructive file rewriting;
+- destructive audio-file rewriting;
 - automatic section detection;
-- user uploads or stem separation;
+- automatic stem separation;
 - MIDI editing or export;
-- section-scoped stem automation and draggable clips;
+- draggable clips;
 - persistent accounts/projects; or
 - deployed collaboration and sharing.
 

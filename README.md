@@ -40,6 +40,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 
 - Local full-song import as a one-lane `MASTER MIX`, with browser-decoded duration, level analysis, and real waveform peaks
 - Local individual-stem replacement for vocals, drums, bass, guitar, keyboards, percussion, synth, FX, and other stems with synchronized-duration validation
+- Batch synchronized-stem import with filename-to-lane mapping, duplicate warnings, unmatched-file summaries, and duration validation before project creation
 - Two switchable real-audio demo projects: five-stem electronic and nine-stem vocal J-rock arrangements
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
@@ -139,14 +140,14 @@ npm run dev
 
 The API key remains server-side. Do not expose it through a `NEXT_PUBLIC_` variable or commit an `.env` file.
 
-Use **Import audio** in the header or sidebar to open a local MP3, WAV, M4A, AAC, OGG, FLAC, or WebM file. A full song becomes a single master-mix project with estimated sections. An individual stem replaces the selected lane and must match the current arrangement duration. Decoding and waveform analysis happen locally in the browser; the audio is not uploaded or persisted.
+Use **Import audio** in the header or sidebar to open local MP3, WAV, M4A, AAC, OGG, FLAC, or WebM files. A full song becomes a single master-mix project with estimated sections. An individual stem replaces the selected lane and must match the current arrangement duration. A complete synchronized export can be selected at once: Voice Remix maps recognizable filenames such as `Lead Vocals`, `Drums`, `Bass`, `Guitar`, and `Synth`, shows skipped or duplicate files, then verifies duration before creating the multitrack project. Decoding and waveform analysis happen locally in the browser; the audio is not uploaded or persisted after reload.
 
 ## Judge test path
 
 The fastest test takes about one minute:
 
 1. Start playback and mute/unmute a stem to confirm real multitrack audio.
-2. Open **Import audio** to inspect the full-song and individual-stem local workflows, then close it to keep the prepared demo arrangement.
+2. Open **Import audio** to inspect full-song, individual-stem, and mapped synchronized-stem workflows, then close it to keep the prepared demo arrangement.
 3. Enter or speak the featured compound request above.
 4. Confirm that the Music Diff header says `GPT-5.6-SOL`.
 5. Confirm there are two operations and `BASS` is protected.
@@ -172,7 +173,7 @@ npm test
 - selective atomic application
 - Undo/Redo history branching
 - server rendering
-- local audio analysis, full-song project creation, and stem replacement
+- local audio analysis, full-song project creation, individual replacement, filename mapping, and synchronized multitrack creation
 - waveform duration and near-silent stem handling
 
 ## How Codex and GPT-5.6 were used
@@ -229,10 +230,13 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Committed-arrangement WAV export | `852c89d` |
 | One-minute judge demo | `2165356` |
 | Native Vercel production build | `6be4404` |
+| Switchable nine-stem vocal demo | `0677859` |
+| Demo-specific AI fallback and prompts | `7ccd780` |
+| Mapped synchronized-stem project import | `85f6ed7` |
 
 ## Sample media and third-party disclosure
 
-The repository includes the demo arrangement **Neon Pulse Loop**, exported as stems from the entrant's Suno account. Browser playback uses compressed MP3 derivatives; waveform envelopes were calculated from the original WAV exports. Details are recorded in [the asset note](public/audio/neon-pulse-loop/README.md).
+The repository includes **Neon Pulse Loop** and **君と走るまで**, exported as stems from the entrant's Suno account. Browser playback uses compressed MP3 derivatives; waveform envelopes were calculated from the original WAV exports. Details are recorded in the [Neon Pulse Loop asset note](public/audio/neon-pulse-loop/README.md) and [君と走るまで asset note](public/audio/kimi-to-hashiru-made/README.md).
 
 The entrant must confirm that their Suno plan and the generated track permit repository distribution, public demo playback, and use in the submission video before final submission. No Suno logos or copied interface assets are included.
 

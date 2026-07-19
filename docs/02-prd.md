@@ -120,13 +120,12 @@ Dragging a section, clicking Mute, accepting a GPT plan, and issuing a voice com
 The repository already includes:
 
 - a polished browser-based multitrack editor
-- a real Suno-generated song: **Neon Pulse Loop**
-- 118 BPM, C minor, 119.4 seconds, approximately 59 bars
-- five synchronized stems: Drums, Percussion, Bass, Synth, FX
+- two switchable Suno-generated demo arrangements: **Neon Pulse Loop** and **君と走るまで**
+- five-stem electronic and nine-stem vocal projects with independent BPM, duration, section, and cover metadata
 - four MIDI exports: Drums, Percussion, Bass, Synth
 - per-pixel waveform peak envelopes rendered on Canvas
 - real stem playback and track mute controls
-- browser-local full-song import and synchronized individual-stem replacement
+- browser-local full-song import, synchronized individual-stem replacement, and mapped batch-stem project creation
 - section selection, energy control, local command parsing, and undo
 - OpenAI Realtime voice conversation with request-based transcription fallback
 
@@ -144,7 +143,6 @@ Supported operations:
 - mute, unmute, or solo one or more tracks
 - set track gain for a section or whole track
 - set section energy metadata
-- duplicate or remove a section
 - preserve a named track or section from a compound edit
 
 Every operation includes stable IDs, before/after values, and a human-readable explanation.
@@ -160,8 +158,7 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 #### C. Ghost timeline preview
 
 - original clips remain visible
-- moved/duplicated clips appear at proposed positions
-- removed regions use a distinct deletion treatment
+- moved clips appear at proposed positions
 - changed tracks and sections are visually connected to plan operations
 - preview never mutates canonical project state
 
@@ -177,7 +174,7 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 - each accepted transaction becomes one history item
 - history displays its component operations
 - user can undo the whole transaction
-- user can selectively revert one compatible operation
+- user can use Undo and Redo for the accepted transaction
 
 #### F. GPT-5.6 planner
 
@@ -205,6 +202,11 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 - queued operation is visible on the timeline
 - playback applies the committed operation at the selected musical boundary
 - user can cancel a queued operation before execution
+
+#### I. Deeper manual history
+
+- selectively revert one compatible operation from a committed compound edit
+- drag a section through the same validated transaction boundary
 
 ### P2 — post-submission
 
@@ -286,7 +288,7 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 
 - transaction title and timestamp
 - expandable component operations
-- full undo and compatible selective revert
+- full Undo and Redo
 - distinguish AI, voice, and manual origin without changing semantics
 
 ### Accessibility
@@ -316,8 +318,8 @@ type EditOperation = {
     | "set_track_enabled"
     | "set_track_gain"
     | "set_section_energy"
-    | "duplicate_section"
-    | "remove_section";
+    | "set_section_track_enabled"
+    | "set_section_track_gain";
   targetId: string;
   before: unknown;
   after: unknown;
@@ -418,7 +420,7 @@ Domain rules:
 - Original/Proposed A/B
 - atomic commit
 - semantic history
-- full and selective revert
+- full Undo and Redo
 
 ### Milestone 4 — OpenAI integration
 

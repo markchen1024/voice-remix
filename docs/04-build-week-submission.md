@@ -9,7 +9,7 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 
 | Requirement | Status | Next action |
 |---|---|---|
-| Working, non-trivial implementation | Verified locally | Production build, lint, and 56/56 tests passed on July 19 |
+| Working, non-trivial implementation | Verified locally | Production build, lint, and 64/64 tests passed on July 19 |
 | Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
@@ -33,7 +33,7 @@ If the repository remains private, share it with:
 Recorded on July 19, 2026:
 
 - `npm run lint`: passed.
-- `npm test`: production build passed; 56 tests passed and 0 failed.
+- `npm test`: production build passed; 64 tests passed and 0 failed.
 - Browser smoke test: the committed five-stem arrangement completed offline rendering and reached the `WAV downloaded` state.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Vercel production deployment: `https://voice-remix.vercel.app/`.
@@ -67,8 +67,8 @@ Use these facts to write the final description yourself.
 
 ### What it does
 
-- Plays five synchronized stems from a real demo arrangement.
-- Imports a local full song or replaces an individual synchronized stem without uploading the audio.
+- Includes switchable five-stem electronic and nine-stem vocal demo arrangements with source-derived waveforms.
+- Imports a local full song, replaces an individual synchronized stem, or creates a new project from a mapped set of synchronized stems without uploading the audio.
 - Accepts spoken or typed music-edit requests and replies in concise studio English.
 - Uses GPT-5.6 Sol to translate contextual requests into constrained music operations.
 - Shows a Music Diff, protected stems, before/after values, assumptions, and ghost timeline preview.
@@ -109,9 +109,9 @@ Use these facts to write the final description yourself.
 
 ### Next steps
 
-- Public judge deployment and a compact first-run demo path.
-- Batch stem mapping and automatic section analysis.
+- Automatic section analysis for newly imported material.
 - Persistent projects, collaboration, and shareable edit histories.
+- Semantic selective revert and draggable section edits through the same transaction model.
 
 ## 4. Evidence to capture
 

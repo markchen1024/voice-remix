@@ -36,12 +36,12 @@ The differentiator is not merely connecting an LLM to editor controls. It is the
 
 | Criterion | Current | Evidence | Main deduction |
 |---|---:|---|---|
-| Technological Implementation | 8.5/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, offline WAV renderer, 56 tests | Some PRD operations remain unimplemented |
+| Technological Implementation | 8.5/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, offline WAV renderer, and automated domain/API tests | Some PRD operations remain unimplemented |
 | Design | 8.5/10 | Public no-login build, polished editor, Music Diff, A/B, ghost timeline, one-minute judge path, finished WAV delivery | Accessibility and mobile passes remain narrower than desktop QA |
-| Potential Impact | 7.5/10 | Clear problem for taste-rich creators who do not use DAWs; import-to-edit-to-download loop now closes | Batch stem intake and persistence are still incomplete |
+| Potential Impact | 8/10 | Clear problem for taste-rich creators who do not use DAWs; full mix, individual stem, and mapped stem-set intake now close the import-to-edit-to-download loop | Reload persistence and automatic section detection remain incomplete |
 | Quality of the Idea | 8.5/10 | “Git diff for music” plus voice and beat-synchronous execution is distinct | The submission must foreground this trust model rather than look like a thin AI editor wrapper |
 
-Estimated total: **33/40**. The complete public product loop is competitive; submission storytelling and final media are now the largest remaining risks.
+Estimated total: **33.5/40**. The complete public product loop is competitive; submission storytelling and final media are now the largest remaining risks.
 
 ## P0 — required before recording the final demo
 
@@ -66,17 +66,17 @@ Estimated total: **33/40**. The complete public product loop is competitive; sub
 
 ### 4. Product truth and state integrity
 
-- Remove or disable every control that has no action.
-- Route manual changes through the same versioned history boundary as AI edits.
-- Make Current, Proposed, queued, and committed states unambiguous.
-- Keep submission claims aligned with what the build actually demonstrates.
+- [x] Remove or disable every control that has no action.
+- [x] Route manual changes through the same versioned history boundary as AI edits.
+- [x] Make Current, Proposed, queued, and committed states unambiguous.
+- [x] Keep submission claims aligned with what the build actually demonstrates.
 
 ### 5. Import completion
 
-- Let full-song import specify BPM and clearly identify estimated sections.
-- Add batch synchronized-stem import with explicit lane mapping and a validation summary.
-- Explain that full mixes support arrangement-level editing but not independent instrument control.
-- Preserve imported work for the session; persistence can follow only if the higher P0 items are complete.
+- [x] Let full-song import specify BPM and clearly identify estimated sections.
+- [x] Add batch synchronized-stem import with explicit lane mapping and a validation summary.
+- [x] Explain that full mixes support arrangement-level editing but not independent instrument control.
+- [x] Preserve imported work for the active browser session; reload persistence remains deferred.
 
 ## P1 — valuable after the P0 gate
 
