@@ -53,13 +53,7 @@ const AUDIO_DURATION = 119.4;
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
 function CoverArt({ mini = false }: { mini?: boolean }) {
-  return (
-    <div className={`cover-art${mini ? " mini-cover" : ""}`} aria-hidden="true">
-      <div className="cover-orbit one" />
-      <div className="cover-orbit two" />
-      <i>VR</i>
-    </div>
-  );
+  return <div className={`cover-art${mini ? " mini-cover" : ""}`} aria-hidden="true" />;
 }
 
 function sectionAt(project: Project, bar: number) {

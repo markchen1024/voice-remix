@@ -11,5 +11,6 @@ Asset provenance: generated from the entrant's own Suno account and exported by 
 - Key: C minor
 - Tracks: drums, percussion, bass, synth, FX
 - MIDI: drums, percussion, bass, synth
+- Cover art: `cover.jpg`, extracted unchanged from the embedded MP3 artwork
 
 The original lossless WAV files remain outside the web bundle. Per-pixel min/max peak envelopes are generated from the original WAV samples and rendered by the editor on Canvas.
