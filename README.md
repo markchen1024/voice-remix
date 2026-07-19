@@ -6,6 +6,8 @@ Voice Remix is a voice-first visual music arranger built for OpenAI Build Week 2
 
 Track: **Apps for Your Life**
 
+**Live judge build:** [voice-remix.vercel.app](https://voice-remix.vercel.app/)
+
 ## Why this exists
 
 AI music generators make it easy to create a finished track, but intentionally revising that track is still difficult. Traditional DAWs offer exact control, but their timelines, routing, automation, and editing vocabulary are a steep learning curve for many creators.
@@ -224,6 +226,7 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Offline WAV render engine | `6a654e4` |
 | Committed-arrangement WAV export | `852c89d` |
 | One-minute judge demo | `2165356` |
+| Native Vercel production build | `6be4404` |
 
 ## Sample media and third-party disclosure
 

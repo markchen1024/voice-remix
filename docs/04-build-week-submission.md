@@ -16,7 +16,7 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 | Repository with setup and sample data | Published | Public at `github.com/markchen1024/voice-remix` |
 | Relevant repository license | Done | Source and docs use MIT; demo media is explicitly excluded |
 | Private repository judge access | Not required | Repository is public |
-| Public demo URL | Workspace blocked | Sites reports that hosting is not enabled for this workspace; use an enabled workspace or another host |
+| Public demo URL | Deployed and smoke-tested | `https://voice-remix.vercel.app/` |
 | Public YouTube demo under 3 minutes | Pending recording | Follow `docs/05-demo-video.md` |
 | Devpost text description | Entrant action | Use the factual worksheet below, rewritten personally |
 | Team invitations accepted | Entrant action | Confirm every member has accepted before the deadline |
@@ -36,7 +36,9 @@ Recorded on July 19, 2026:
 - `npm test`: production build passed; 56 tests passed and 0 failed.
 - Browser smoke test: the committed five-stem arrangement completed offline rendering and reached the `WAV downloaded` state.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
-- Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
+- Vercel production deployment: `https://voice-remix.vercel.app/`.
+- Public browser smoke test: 45 section players loaded, transport advanced, GPT-5.6 returned two operations with protected `BASS`, Apply enabled Undo, and the browser logged no errors.
+- Public `/api/realtime-session` smoke test: HTTP 200 with an expiring credential present; the credential value was not logged.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
 - GitHub CLI: authenticated as `markchen1024` with admin access to the public repository.
 
@@ -124,11 +126,11 @@ Do not show API keys, browser bookmarks, private account data, local file paths,
 ## 5. Final verification checklist
 
 - [x] `npm run lint` and `npm test` pass locally; run `npm ci` once more from the final public checkout.
-- [ ] Live deployment loads in a signed-out/incognito window.
-- [ ] Server deployment has `OPENAI_API_KEY` and `OPENAI_MODEL`; neither appears in browser source.
-- [ ] Featured command returns `GPT-5.6-SOL`, not `LOCAL`.
-- [ ] Playback works only after a user gesture and all five stems remain synchronized.
-- [ ] Apply, Discard, Undo, Redo, mute, and gain work.
+- [x] Live deployment loads without an application login at `https://voice-remix.vercel.app/`.
+- [x] Server deployment has encrypted `OPENAI_API_KEY` and `OPENAI_MODEL`; neither appears in browser source.
+- [x] Featured command returns `GPT-5.6-SOL`, not `LOCAL`.
+- [x] Playback works after a user gesture; 45 scheduled section players load from the five synchronized stems.
+- [x] Apply, Discard, Undo, Redo, mute, and gain pass local regression; public Apply enabled Undo during the judge-flow smoke test.
 - [x] The committed five-stem arrangement renders offline and reaches the WAV download completion state.
 - [ ] YouTube video is public, audible, legible, and shorter than three minutes.
 - [ ] Devpost description and category are complete.

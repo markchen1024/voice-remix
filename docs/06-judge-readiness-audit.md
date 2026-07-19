@@ -37,19 +37,19 @@ The differentiator is not merely connecting an LLM to editor controls. It is the
 | Criterion | Current | Evidence | Main deduction |
 |---|---:|---|---|
 | Technological Implementation | 8.5/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, offline WAV renderer, 56 tests | Some PRD operations remain unimplemented |
-| Design | 8/10 | Polished editor, Music Diff, A/B, ghost timeline, live cue, one-minute judge path, finished WAV delivery | No public judge URL |
+| Design | 8.5/10 | Public no-login build, polished editor, Music Diff, A/B, ghost timeline, one-minute judge path, finished WAV delivery | Accessibility and mobile passes remain narrower than desktop QA |
 | Potential Impact | 7.5/10 | Clear problem for taste-rich creators who do not use DAWs; import-to-edit-to-download loop now closes | Batch stem intake and persistence are still incomplete |
 | Quality of the Idea | 8.5/10 | “Git diff for music” plus voice and beat-synchronous execution is distinct | The submission must foreground this trust model rather than look like a thin AI editor wrapper |
 
-Estimated total: **32.5/40**. The concept and core loop are competitive; public access is now the largest remaining deduction.
+Estimated total: **33/40**. The complete public product loop is competitive; submission storytelling and final media are now the largest remaining risks.
 
 ## P0 — required before recording the final demo
 
 ### 1. Public, no-login judge build
 
-- Deploy a stable URL with server-side `OPENAI_API_KEY` and `OPENAI_MODEL`.
-- Verify playback, Realtime permission flow, GPT-5.6 planning, and fallback in a signed-out browser.
-- Keep the deployment available free of charge through the judging period.
+- [x] Deploy a stable URL with server-side `OPENAI_API_KEY` and `OPENAI_MODEL`: `https://voice-remix.vercel.app/`.
+- [x] Verify public playback, GPT-5.6 planning, Apply/Undo, and Realtime session creation without an application login.
+- [ ] Keep the deployment available free of charge through the judging period and repeat the smoke test before submission.
 
 ### 2. Downloadable audible result
 
