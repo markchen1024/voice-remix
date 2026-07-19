@@ -273,6 +273,8 @@ export function VoiceRemixStudio() {
   const liveQueueRef = useRef<LiveCommandQueue | null>(null);
   const previousLivePosition = useRef(0);
   const liveQueueExecutionHandler = useRef<(queue: LiveCommandQueue) => void>(() => undefined);
+  const timelineScroll = useRef<HTMLDivElement | null>(null);
+  const followedSection = useRef("");
   const scheduled = useRef(false);
   const audioSetup = useRef<Promise<void> | null>(null);
   const players = useRef<Partial<Record<TrackId, ScheduledPlayer[]>>>({});
@@ -300,6 +302,16 @@ export function VoiceRemixStudio() {
     frame = requestAnimationFrame(update);
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  useEffect(() => {
+    const activeSection = sectionAt(audibleProject, Math.floor(position));
+    const scroll = timelineScroll.current;
+    if (!activeSection || !scroll || followedSection.current === activeSection.id) return;
+    followedSection.current = activeSection.id;
+    const sectionCenter = (activeSection.startBar + activeSection.lengthBars / 2) * BAR_PX;
+    const viewportCenter = Math.max(0, (scroll.clientWidth - 180) / 2);
+    scroll.scrollTo({ left: Math.max(0, sectionCenter - viewportCenter), behavior: playing ? "smooth" : "auto" });
+  }, [audibleProject, playing, position]);
 
   useEffect(() => () => {
     const transport = Tone.getTransport();
@@ -1081,7 +1093,7 @@ export function VoiceRemixStudio() {
                 <div><span className="overline">VISUAL EDITOR</span><h2>Arrangement</h2></div>
                 <div className="editor-tools"><span className="current-section"><i />{active?.label ?? "Ready"}</span><button>−</button><small>100%</small><button>＋</button></div>
               </div>
-              <div className="playlist-scroll">
+              <div className="playlist-scroll" ref={timelineScroll} data-active-section={active?.id ?? ""}>
                 <div className="track-label-spacer"><span>STEMS</span></div>
                 <div className="bar-ruler" style={{ width: TOTAL_BARS * BAR_PX }}>
                   {barLabels.map((bar) => <span key={bar} style={{ width: BAR_PX }}>{bar}</span>)}
@@ -1130,6 +1142,14 @@ export function VoiceRemixStudio() {
             <aside className="inspector-card">
               <div className="inspector-heading"><div><span className="overline">SELECTED</span><h2>{selected.label}</h2></div><button>•••</button></div>
               <div className="section-preview"><div className={`section-icon ${selected.kind}`}>♪</div><div><strong>{selected.label}</strong><span>Bars {selected.startBar + 1}–{selected.startBar + selected.lengthBars}</span></div></div>
+              <div className="section-mix" aria-label={`${selected.label} stem state`}>
+                <div className="section-mix-title"><span>SECTION MIX</span><small>{auditioningProposal ? "PROPOSED" : "CURRENT"}</small></div>
+                {project.tracks.map((track) => {
+                  const state = sectionTrackState(audibleProject, selected.id, track.id);
+                  const automated = audibleProject.automation?.some((item) => item.sectionId === selected.id && item.trackId === track.id);
+                  return <div className={`${state.enabled ? "" : "muted"} ${automated ? "automated" : ""}`} key={`${selected.id}-${track.id}-state`}><i style={{ background: track.color }} /><strong>{track.label}</strong><span>{state.enabled ? `${Math.round(state.level * 100)}%` : "MUTED"}</span></div>;
+                })}
+              </div>
               <div className="control-block"><label>Position <strong>Bar {selected.startBar + 1}</strong></label><div className="nudge-controls"><button onClick={() => nudgeSection(-1)}>← Earlier</button><button onClick={() => nudgeSection(1)}>Later →</button></div></div>
               <div className="control-block"><label>Energy <strong>{Math.round(selected.energy * 100)}%</strong></label><input type="range" min="0.1" max="1" step="0.05" value={selected.energy} onChange={(event) => {
                 const next = cloneProject(project);

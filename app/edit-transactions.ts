@@ -224,9 +224,12 @@ export function createLocalTransaction(input: string, project: Project): EditTra
   const choruses = project.sections.filter((section) => section.kind === "chorus");
   const targetChorus = mentionsFinalChorus ? choruses.at(-1) : choruses[0];
   const targetVerse = project.sections.find((section) => section.kind === "verse");
-  const scopedSection = /(?:只在|仅在|这一段|这个段落|in (?:the |this )?)(?:[^，。,.；;]*)/i.test(input)
-    ? (/主歌|verse/i.test(input) ? targetVerse : /副歌|chorus/i.test(input) ? targetChorus : undefined)
-    : /主歌|verse/i.test(input) && /关闭|关掉|静音|mute/i.test(input) ? targetVerse : undefined;
+  const mentionsChorus = /副歌|chorus|hook/i.test(input);
+  const explicitlySingleChorus = /第一|第二|最后|这一|这个|当前|这里|first|second|last|final|this|current|here/i.test(input);
+  const chorusStemScope = /只在|仅在|in (?:the |this )?|(?:副歌|chorus|hook).*(?:只保留|only keep)|(?:只保留|only keep).*(?:副歌|chorus|hook)/i.test(input);
+  const scopedSections = mentionsChorus && chorusStemScope
+    ? explicitlySingleChorus ? (targetChorus ? [targetChorus] : []) : choruses
+    : /主歌|verse/i.test(input) && /只在|仅在|关闭|关掉|静音|mute|in (?:the |this )?/i.test(input) && targetVerse ? [targetVerse] : [];
 
   if (/副歌|chorus/i.test(input) && /提前|earlier|前移/i.test(input) && targetChorus) {
     const bars = Number(input.match(/(\d+)\s*(?:小节|bars?)/i)?.[1] ?? 4);
@@ -259,10 +262,12 @@ export function createLocalTransaction(input: string, project: Project): EditTra
     const wanted = trackMatchers.filter(([pattern]) => pattern.test(input)).map(([, id]) => id);
     for (const track of project.tracks) {
       const afterEnabled = wanted.includes(track.id);
-      const beforeEnabled = scopedSection ? sectionTrackState(project, scopedSection.id, track.id).enabled : track.enabled;
-      if (beforeEnabled !== afterEnabled && scopedSection) {
-        operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: track.id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled, explanation: `${afterEnabled ? "Keep" : "Mute"} ${track.label} in ${scopedSection.label}.`, selected: true });
-      } else if (beforeEnabled !== afterEnabled) {
+      if (scopedSections.length) {
+        for (const scopedSection of scopedSections) {
+          const beforeEnabled = sectionTrackState(project, scopedSection.id, track.id).enabled;
+          if (beforeEnabled !== afterEnabled) operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: track.id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled, explanation: `${afterEnabled ? "Keep" : "Mute"} ${track.label} in ${scopedSection.label}.`, selected: true });
+        }
+      } else if (track.enabled !== afterEnabled) {
         operations.push({ id: operationId(), action: "set_track_enabled", targetId: track.id, targetLabel: track.label, beforeEnabled: track.enabled, afterEnabled, explanation: `${afterEnabled ? "Keep" : "Mute"} ${track.label}.`, selected: true });
       }
     }
@@ -271,14 +276,18 @@ export function createLocalTransaction(input: string, project: Project): EditTra
       if (!pattern.test(input)) continue;
       const track = project.tracks.find((item) => item.id === id);
       if (!track || protectedTargets.includes(track.label)) continue;
-      const beforeEnabled = scopedSection ? sectionTrackState(project, scopedSection.id, id).enabled : track.enabled;
-      if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && beforeEnabled && scopedSection) {
-        operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: false, explanation: `Mute ${track.label} only in ${scopedSection.label}.`, selected: true });
-      } else if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && beforeEnabled) {
+      if (scopedSections.length) {
+        for (const scopedSection of scopedSections) {
+          const beforeEnabled = sectionTrackState(project, scopedSection.id, id).enabled;
+          if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && beforeEnabled) {
+            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: false, explanation: `Mute ${track.label} only in ${scopedSection.label}.`, selected: true });
+          } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !beforeEnabled) {
+            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: true, explanation: `Restore ${track.label} only in ${scopedSection.label}.`, selected: true });
+          }
+        }
+      } else if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && track.enabled) {
         operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: true, afterEnabled: false, explanation: `Mute ${track.label} without changing its source audio.`, selected: true });
-      } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !beforeEnabled && scopedSection) {
-        operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: true, explanation: `Restore ${track.label} only in ${scopedSection.label}.`, selected: true });
-      } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !beforeEnabled) {
+      } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !track.enabled) {
         operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: false, afterEnabled: true, explanation: `Restore ${track.label}.`, selected: true });
       }
     }
@@ -288,15 +297,21 @@ export function createLocalTransaction(input: string, project: Project): EditTra
     const drums = project.tracks.find((track) => track.id === "drums");
     if (drums && !protectedTargets.includes(drums.label)) {
       const gainDelta = Math.min(0.5, Number(input.match(/(\d+)\s*%/)?.[1] ?? 25) / 100);
-      if (scopedSection) {
-        const beforeLevel = sectionTrackState(project, scopedSection.id, "drums").level;
-        operations.push({ id: operationId(), action: "set_section_track_gain", targetId: "drums", targetLabel: `${drums.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeLevel, afterLevel: Math.min(1.5, beforeLevel + gainDelta), explanation: `Raise drums only in ${scopedSection.label}.`, selected: true });
+      if (scopedSections.length) {
+        for (const scopedSection of scopedSections) {
+          const beforeLevel = sectionTrackState(project, scopedSection.id, "drums").level;
+          operations.push({ id: operationId(), action: "set_section_track_gain", targetId: "drums", targetLabel: `${drums.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeLevel, afterLevel: Math.min(1.5, beforeLevel + gainDelta), explanation: `Raise drums only in ${scopedSection.label}.`, selected: true });
+        }
       } else {
         operations.push({ id: operationId(), action: "set_track_gain", targetId: "drums", targetLabel: drums.label, beforeLevel: drums.level, afterLevel: Math.min(1.5, drums.level + gainDelta), explanation: "Raise the drum stem across the song.", selected: true });
       }
     }
   } else if (/更有力量|能量|更强|harder|energy/i.test(input) && targetChorus) {
     operations.push({ id: operationId(), action: "set_section_energy", targetId: targetChorus.id, targetLabel: targetChorus.label, beforeEnergy: targetChorus.energy, afterEnergy: 1, explanation: `Increase ${targetChorus.label} energy metadata to 100%.`, selected: true });
+  }
+
+  if (scopedSections.length > 1 && operations.some((operation) => "sectionId" in operation && scopedSections.some((section) => section.id === operation.sectionId))) {
+    assumptions.push(`Generic chorus/hook scope applies to every occurrence: ${scopedSections.map((section) => section.label).join(" and ")}.`);
   }
 
   if (!operations.length) return null;

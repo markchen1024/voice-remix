@@ -70,3 +70,46 @@ test("AI plans can automate a protected stem in one section without touching oth
     selected: true,
   });
 });
+
+test("generic hook edits expand to every chorus occurrence", () => {
+  const repeatedProject = {
+    ...project,
+    sections: [
+      { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 16, lengthBars: 12, energy: 0.8 },
+      project.sections[0],
+    ],
+  };
+  const transaction = normalizeMusicEditPlan("only keep drums in the hook", repeatedProject, {
+    summary: "Only drums in the hook",
+    assumptions: [],
+    protectedTargets: [],
+    operations: [
+      { action: "set_section_track_enabled", sectionId: "chorus-1", trackId: "synth", enabled: false, explanation: "Mute synth in the hook" },
+    ],
+  });
+
+  assert.ok(transaction);
+  assert.deepEqual(transaction.operations.map((operation) => operation.sectionId), ["chorus-1", "chorus-2"]);
+  assert.match(transaction.assumptions[0], /every occurrence/);
+});
+
+test("explicit final hook edits remain scoped to one occurrence", () => {
+  const repeatedProject = {
+    ...project,
+    sections: [
+      { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 16, lengthBars: 12, energy: 0.8 },
+      project.sections[0],
+    ],
+  };
+  const transaction = normalizeMusicEditPlan("only keep drums in the final hook", repeatedProject, {
+    summary: "Only drums in the final hook",
+    assumptions: [],
+    protectedTargets: [],
+    operations: [
+      { action: "set_section_track_enabled", sectionId: "chorus-2", trackId: "synth", enabled: false, explanation: "Mute synth in the final hook" },
+    ],
+  });
+
+  assert.ok(transaction);
+  assert.deepEqual(transaction.operations.map((operation) => operation.sectionId), ["chorus-2"]);
+});

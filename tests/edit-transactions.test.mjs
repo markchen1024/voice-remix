@@ -55,6 +55,22 @@ test("solo commands create deterministic mute operations", () => {
   assert.equal(next.tracks.find((item) => item.id === "synth").enabled, false);
 });
 
+test("generic hook solo persists across every chorus occurrence", () => {
+  const transaction = createLocalTransaction("only keep drums in the hook", project);
+  assert.ok(transaction);
+  assert.equal(transaction.operations.length, 8);
+  assert.deepEqual([...new Set(transaction.operations.map((operation) => operation.sectionId))], ["chorus-1", "chorus-2"]);
+
+  const next = applyOperations(project, transaction.operations);
+  for (const sectionId of ["chorus-1", "chorus-2"]) {
+    assert.equal(sectionTrackState(next, sectionId, "drums").enabled, true);
+    assert.equal(sectionTrackState(next, sectionId, "percussion").enabled, false);
+    assert.equal(sectionTrackState(next, sectionId, "bass").enabled, false);
+    assert.equal(sectionTrackState(next, sectionId, "synth").enabled, false);
+    assert.equal(sectionTrackState(next, sectionId, "fx").enabled, false);
+  }
+});
+
 test("moving a section earlier ripples later sections and trims the predecessor", () => {
   const arrangedProject = {
     ...project,

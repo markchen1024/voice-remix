@@ -102,3 +102,31 @@ test("section automation updates only the matching scheduled player", () => {
   chorusPlayer.mute = false;
   assert.equal(chorusPlayer.volume.value, 1.2);
 });
+
+test("repeated chorus players keep the committed mute state across mixer refreshes", () => {
+  const project = {
+    version: 2,
+    totalBars: 12,
+    bpm: 118,
+    sections: [
+      { id: "chorus-1", kind: "chorus", label: "Chorus", startBar: 0, lengthBars: 4, energy: 0.8 },
+      { id: "verse", kind: "verse", label: "Verse", startBar: 4, lengthBars: 4, energy: 0.5 },
+      { id: "chorus-2", kind: "chorus", label: "Final Chorus", startBar: 8, lengthBars: 4, energy: 1 },
+    ],
+    tracks: [track("synth", true)],
+    automation: [
+      { sectionId: "chorus-1", trackId: "synth", enabled: false },
+      { sectionId: "chorus-2", trackId: "synth", enabled: false },
+    ],
+  };
+  const firstChorus = Object.assign(player(), { sectionId: "chorus-1", mixGain: 1 });
+  const verse = Object.assign(player(), { sectionId: "verse", mixGain: 1 });
+  const secondChorus = Object.assign(player(), { sectionId: "chorus-2", mixGain: 1 });
+  const players = { synth: [firstChorus, verse, secondChorus] };
+
+  syncProjectMixer(project, players, (gain) => gain);
+  syncProjectMixer(project, players, (gain) => gain);
+  assert.equal(firstChorus.mute, true);
+  assert.equal(verse.mute, false);
+  assert.equal(secondChorus.mute, true);
+});
