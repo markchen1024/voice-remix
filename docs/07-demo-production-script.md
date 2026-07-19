@@ -33,7 +33,7 @@ Record two clean takes of files 03–06 while the live GPT-5.6 path is working. 
 
 Narrator:
 
-> While the music keeps playing, I press Talk and describe the result I want.
+> I press Talk. Playback pauses at the current position, so Voice Remix hears my instruction clearly.
 
 Speak this line live into the product:
 
@@ -41,7 +41,7 @@ Speak this line live into the product:
 
 Narrator:
 
-> Realtime transcription captures the request while the music ducks instead of stopping.
+> Realtime transcription captures the request, then playback resumes from the same position.
 
 ### 0:55–1:22 — GPT-5.6 Music Diff
 
@@ -108,4 +108,3 @@ Delivery: Natural product-demo cadence; informative, never theatrical or salesy.
 - [ ] No secrets or personal notifications are visible.
 - [ ] The entrant has confirmed public video rights for the included demo music.
 - [ ] Final upload is a public YouTube video and plays at 1080p while signed out.
-
