@@ -45,5 +45,7 @@ test("proposal and history commands are routed without invoking the planner", ()
   assert.deepEqual(routeImmediateEditorCommand("就这样", project, context), { action: "apply_proposal" });
   assert.deepEqual(routeImmediateEditorCommand("听原版", project, context), { action: "audition_current" });
   assert.deepEqual(routeImmediateEditorCommand("撤销", project, context), { action: "undo" });
+  assert.deepEqual(routeImmediateEditorCommand("不对，撤回", project, context), { action: "undo" });
+  assert.deepEqual(routeImmediateEditorCommand("算了", project, context), { action: "discard_proposal" });
   assert.equal(routeImmediateEditorCommand("鼓更强", project, context), null);
 });

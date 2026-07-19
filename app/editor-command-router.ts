@@ -43,10 +43,10 @@ export function routeImmediateEditorCommand(input: string, project: Project, con
   const normalized = input.trim();
   if (!normalized) return null;
 
-  if (/^(撤销|undo)(一下|刚才|上一步)?[。.!！]?$/i.test(normalized)) return { action: "undo" };
+  if (/^(不对[，,\s]*)?(撤销|撤回|回退|undo)(一下|刚才|上一步)?[。.!！]?$/i.test(normalized)) return { action: "undo" };
   if (/^(重做|redo)(一下|刚才|下一步)?[。.!！]?$/i.test(normalized)) return { action: "redo" };
   if (context.activeProposal && /^(应用|确认|就这样|采用|apply|commit|looks good|keep it)[。.!！]?$/i.test(normalized)) return { action: "apply_proposal" };
-  if (context.activeProposal && /^(丢弃|不要了|取消修改|discard|reject)(这个|这次| proposal)?[。.!！]?$/i.test(normalized)) return { action: "discard_proposal" };
+  if (context.activeProposal && /^(丢弃|不要了|算了|取消修改|discard|reject)(这个|这次| proposal)?[。.!！]?$/i.test(normalized)) return { action: "discard_proposal" };
   if (context.activeProposal && /^(听|播放|切到)?(原版|当前版本|修改前|current|original)[。.!！]?$/i.test(normalized)) return { action: "audition_current" };
   if (context.activeProposal && /^(听|播放|切到)?(修改后|新版|提案|proposed|new version)[。.!！]?$/i.test(normalized)) return { action: "audition_proposed" };
   if (/取消循环|停止循环|播放整首|clear loop|stop looping/i.test(normalized)) return { action: "clear_loop" };

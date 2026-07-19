@@ -12,6 +12,7 @@ import { createProjectExport, projectExportFilename } from "./project-export";
 import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeTranscription, type RealtimeTranscriptionClient } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
+import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
 
 const INITIAL_PROJECT: Project = {
   version: 1,
@@ -125,7 +126,7 @@ function formatOverviewTime(seconds: number) {
   return `${Math.floor(wholeSeconds / 60)}:${String(wholeSeconds % 60).padStart(2, "0")}`;
 }
 
-function MasterWaveform({ project, position, auditioning, onScrub }: { project: Project; position: number; auditioning: boolean; onScrub: (bar: number) => void }) {
+function MasterWaveform({ project, position, auditioning, cueBar, onScrub }: { project: Project; position: number; auditioning: boolean; cueBar?: number; onScrub: (bar: number) => void }) {
   const baseCanvas = useRef<HTMLCanvasElement>(null);
   const playedCanvas = useRef<HTMLCanvasElement>(null);
   const [envelopes, setEnvelopes] = useState<PeakBank>({});
@@ -223,6 +224,7 @@ function MasterWaveform({ project, position, auditioning, onScrub }: { project: 
       <div className="master-section-markers" aria-hidden="true">
         {project.sections.map((section) => <span key={section.id} className="master-section-marker" style={{ left: `${section.startBar / project.totalBars * 100}%` }}><i />{section.label}</span>)}
       </div>
+      {cueBar !== undefined && <span className="master-live-cue" aria-hidden="true" style={{ left: `${cueBar / project.totalBars * 100}%` }}><i>NEXT</i></span>}
       <span className="master-playhead" aria-hidden="true" style={{ left: `${progress}%` }} />
       <span className="master-time" aria-hidden="true">{formatOverviewTime(position / project.totalBars * AUDIO_DURATION)} / 1:59</span>
     </div>
@@ -241,6 +243,7 @@ export function VoiceRemixStudio() {
   const [planning, setPlanning] = useState(false);
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "recording" | "transcribing">("idle");
   const [audioSwitching, setAudioSwitching] = useState(false);
+  const [liveQueue, setLiveQueue] = useState<LiveCommandQueue | null>(null);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -257,6 +260,9 @@ export function VoiceRemixStudio() {
   const realtimeTranscription = useRef<RealtimeTranscriptionClient | null>(null);
   const voiceCommandHandler = useRef<(text: string) => void>(() => undefined);
   const voiceDuckingLevel = useRef<number | null>(null);
+  const liveQueueRef = useRef<LiveCommandQueue | null>(null);
+  const previousLivePosition = useRef(0);
+  const liveQueueExecutionHandler = useRef<(queue: LiveCommandQueue) => void>(() => undefined);
   const scheduled = useRef(false);
   const audioSetup = useRef<Promise<void> | null>(null);
   const players = useRef<Partial<Record<TrackId, ScheduledPlayer[]>>>({});
@@ -523,6 +529,18 @@ export function VoiceRemixStudio() {
     commit(next, track.enabled ? `Unmuted ${track.label}` : `Muted ${track.label}`, "Manual track edit");
   };
 
+  const clearLiveQueue = () => {
+    liveQueueRef.current = null;
+    setLiveQueue(null);
+  };
+
+  const queueProposalForNextBar = (transaction: EditTransaction) => {
+    const queue = createLiveCommandQueue(transaction, positionRef.current, TOTAL_BARS);
+    liveQueueRef.current = queue;
+    setLiveQueue(queue);
+    setActivity((items) => [{ title: "Live edit queued", detail: `${transaction.summary} · executes at bar ${queue.executeAtBar + 1}`, time: "NEXT BAR" }, ...items].slice(0, 5));
+  };
+
   const nudgeSection = (delta: number) => {
     const section = project.sections.find((item) => item.id === selectedSection)!;
     const next = applyOperations(project, [{
@@ -547,7 +565,15 @@ export function VoiceRemixStudio() {
       if (playingRef.current) await togglePlay();
       setActivity((items) => [{ title: "Voice control · Pause", detail: "Transport paused", time: "NOW" }, ...items].slice(0, 5));
     } else if (editorCommand.action === "undo") {
-      undo();
+      if (liveQueueRef.current) {
+        clearLiveQueue();
+        setProposal(null);
+        setActivity((items) => [{ title: "Queued edit cancelled", detail: "The live arrangement was not changed", time: "NOW" }, ...items].slice(0, 5));
+      } else if (auditioningProposal && proposal) {
+        await discardProposal();
+      } else {
+        undo();
+      }
     } else if (editorCommand.action === "redo") {
       redo();
     } else if (editorCommand.action === "apply_proposal") {
@@ -624,6 +650,7 @@ export function VoiceRemixStudio() {
       setActivity((items) => [{ title: previousProposal ? "Refinement needs clarification" : "Needs clarification", detail: `“${input}” did not produce a supported edit`, time: "NOW" }, ...items].slice(0, 5));
     } else {
       setProposal(nextProposal);
+      if (playingRef.current) queueProposalForNextBar(nextProposal);
       setActivity((items) => [{ title: previousProposal ? "Music Diff refined" : "Music Diff ready", detail: `${nextProposal.operations.length} operations · ${nextProposal.planner} · project unchanged`, time: "NOW" }, ...items].slice(0, 5));
     }
     setPlanning(false);
@@ -639,6 +666,11 @@ export function VoiceRemixStudio() {
     if (!proposal) return;
     const nextProposal = { ...proposal, operations: proposal.operations.map((operation) => operation.id === operationId ? { ...operation, selected: !operation.selected } : operation) };
     setProposal(nextProposal);
+    if (liveQueueRef.current?.transaction.id === proposal.id) {
+      const nextQueue = { ...liveQueueRef.current, transaction: nextProposal };
+      liveQueueRef.current = nextQueue;
+      setLiveQueue(nextQueue);
+    }
     if (auditioningProposal) {
       const auditionProject = applyOperations(project, nextProposal.operations);
       await activateAudioProject(auditionProject, { seekBar: auditionStartBar(nextProposal) });
@@ -648,6 +680,7 @@ export function VoiceRemixStudio() {
 
   const discardProposal = async () => {
     if (!proposal) return;
+    clearLiveQueue();
     if (auditioningProposal) {
       await activateAudioProject(project, { seekBar: auditionStartBar(proposal) });
     }
@@ -665,6 +698,7 @@ export function VoiceRemixStudio() {
       setAuditioningProposal(false);
       setActivity((items) => [{ title: "Current mix", detail: "Audition ended · project was never changed", time: "NOW" }, ...items].slice(0, 5));
     } else {
+      clearLiveQueue();
       const auditionProject = applyOperations(project, proposal.operations);
       const startBar = auditionStartBar(proposal);
       const switched = await activateAudioProject(auditionProject, { autoplay: true, seekBar: startBar });
@@ -682,11 +716,38 @@ export function VoiceRemixStudio() {
     }
     const selectedOperations = proposal.operations.filter((operation) => operation.selected);
     if (!selectedOperations.length) return;
+    clearLiveQueue();
     const next = applyOperations(project, proposal.operations, true);
     commit(next, "Music Diff committed", selectedOperations.map((operation) => `${describeOperation(operation).verb} ${operation.targetLabel}`).join(" · "));
     setProposal(null);
     setAuditioningProposal(false);
   };
+
+  useEffect(() => {
+    liveQueueExecutionHandler.current = (queue: LiveCommandQueue) => {
+      if (queue.transaction.baseProjectVersion !== projectRef.current.version) {
+        clearLiveQueue();
+        setProposal(null);
+        setActivity((items) => [{ title: "Live edit expired", detail: "The project changed before the cue", time: "NOW" }, ...items].slice(0, 5));
+        return;
+      }
+      const auditionProject = applyOperations(projectRef.current, queue.transaction.operations);
+      clearLiveQueue();
+      void activateAudioProject(auditionProject, { autoplay: true }).then((switched) => {
+        if (!switched) return;
+        setAuditioningProposal(true);
+        setActivity((items) => [{ title: "Live edit is playing", detail: `${queue.transaction.summary} · audition only, say “就这样” to commit`, time: "ON BEAT" }, ...items].slice(0, 5));
+      });
+    };
+  });
+
+  useEffect(() => {
+    const previous = previousLivePosition.current;
+    previousLivePosition.current = position;
+    const queue = liveQueueRef.current;
+    if (!queue || !playingRef.current) return;
+    if (crossedQuantizedBar(previous, position, queue.executeAtBar, TOTAL_BARS)) liveQueueExecutionHandler.current(queue);
+  }, [position]);
 
   useEffect(() => {
     voiceCommandHandler.current = (text: string) => {
@@ -857,6 +918,8 @@ export function VoiceRemixStudio() {
   const active = sectionAt(project, Math.floor(position));
   const barLabels = useMemo(() => Array.from({ length: TOTAL_BARS }, (_, index) => index + 1), []);
   const selectedProposalOperations = proposal?.operations.filter((operation) => operation.selected) ?? [];
+  const liveBarsRemaining = liveQueue ? forwardBarDistance(position, liveQueue.executeAtBar, TOTAL_BARS) : 0;
+  const liveBeatsRemaining = Math.max(0, liveBarsRemaining * 4);
   const proposedSectionChanges = proposedProject ? proposedProject.sections.filter((section) => {
     const current = project.sections.find((item) => item.id === section.id);
     return current && (current.startBar !== section.startBar || current.lengthBars !== section.lengthBars);
@@ -899,13 +962,13 @@ export function VoiceRemixStudio() {
         <div className="content-wrap">
           <section className="create-card">
             <div className="create-glow" />
-            <span className="ai-label"><i>✦</i> AI ARRANGER</span>
-            <h1>What should change?</h1>
-            <p>Describe the feeling, structure, or instrument you want to hear.</p>
+              <span className="ai-label"><i>●</i> LIVE SESSION · {playing ? "MUSIC RUNNING" : "READY"}</span>
+              <h1>Talk to the arrangement.</h1>
+              <p>Speak naturally while the music keeps playing. Edits land cleanly on the next bar.</p>
             <form className="prompt-box" onSubmit={runCommand}>
               <button type="button" className={`voice-button ${voiceState}`} onClick={toggleVoiceCapture} aria-label={voiceButtonLabel} title={voiceState === "recording" ? "Stop recording" : "Speak an edit"} disabled={voiceState === "connecting" || voiceState === "transcribing" || planning || audioSwitching}>{voiceState === "recording" ? "■" : voiceState !== "idle" ? "✦" : "🎙"}</button>
               <input value={command} onChange={(event) => setCommand(event.target.value)} placeholder="Type or speak an edit, e.g. “only keep bass and drums”" aria-label="Arrangement command" disabled={planning || voiceState !== "idle"} />
-              <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Planning…" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
+              <button className={`apply-button ${planning ? "is-planning" : ""}`} type="submit" disabled={planning || voiceState !== "idle"}><span>{planning ? "Listening…" : playing ? "Queue live edit" : "Preview edit"}</span> {planning ? "✦" : "↑"}</button>
             </form>
             <div className="prompt-footer">
               <div className="suggestions">
@@ -914,6 +977,15 @@ export function VoiceRemixStudio() {
               <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · transcript appears as you speak" : voiceState === "transcribing" ? "Finalizing the voice command…" : planning ? "GPT-5.6 is interpreting the arrangement…" : "OpenAI Realtime voice + GPT-5.6 planner"}</small>
             </div>
           </section>
+
+          {liveQueue && (
+            <section className="live-queue" aria-label="Queued live edit" data-execute-bar={liveQueue.executeAtBar}>
+              <div className="live-countdown"><span>NEXT BAR</span><strong>{liveBeatsRemaining.toFixed(1)}</strong><small>BEATS</small></div>
+              <div className="live-queue-copy"><span className="overline">GHOST EDIT · AUDITION ON CUE</span><h2>{liveQueue.transaction.summary}</h2><p>The current mix keeps playing. This change will be heard at bar {liveQueue.executeAtBar + 1} and remains reversible.</p></div>
+              <div className="live-queue-ops">{liveQueue.transaction.operations.filter((operation) => operation.selected).slice(0, 3).map((operation) => { const description = describeOperation(operation); return <span key={operation.id}>{description.verb} {description.target}</span>; })}</div>
+              <button type="button" onClick={() => { clearLiveQueue(); setProposal(null); }} aria-label="Cancel queued live edit">×</button>
+            </section>
+          )}
 
           {proposal && (
             <section className="music-diff" aria-label="Proposed music edit">
@@ -951,7 +1023,7 @@ export function VoiceRemixStudio() {
               <p>Alt-electronic · Neon pop · Instrumental</p>
               <div className="song-tags"><span>{project.bpm} BPM</span><span>C minor</span><span>{TOTAL_BARS} bars</span><span>5 Suno stems</span></div>
             </div>
-            <MasterWaveform project={audibleProject} position={position} auditioning={auditioningProposal} onScrub={scrubToBar} />
+            <MasterWaveform project={audibleProject} position={position} auditioning={auditioningProposal} cueBar={liveQueue?.executeAtBar} onScrub={scrubToBar} />
             <button className={`hero-play ${playing ? "playing" : ""}`} onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button>
           </section>
 
@@ -998,6 +1070,7 @@ export function VoiceRemixStudio() {
                         );
                       })}
                       {!auditioningProposal && proposedSectionChanges.map((section) => <div className="ghost-clip" key={`${track.id}-${section.id}-ghost`} style={{ left: section.startBar * BAR_PX + 3, width: Math.max(BAR_PX / 2, section.lengthBars * BAR_PX - 6) }}><span>PROPOSED · {section.label}</span></div>)}
+                      {liveQueue && <div className="live-cue-line" style={{ left: liveQueue.executeAtBar * BAR_PX }}>{track.id === project.tracks[0].id && <span>NEXT BAR</span>}</div>}
                       <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
                     </div>
                   </div>
