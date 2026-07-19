@@ -105,6 +105,61 @@ button { color: inherit; }
 .import-options { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; margin-top: 22px; }.import-option { position: relative; min-height: 190px; display: flex; flex-direction: column; align-items: flex-start; gap: 13px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 16px; background: #ffffff04; padding: 18px; cursor: pointer; transition: border-color .18s ease, background .18s ease, transform .18s ease; }.import-option:hover { border-color: #9a79ff77; background: #8d6cff0c; transform: translateY(-2px); }.import-option.disabled { cursor: not-allowed; filter: grayscale(.3); opacity: .48; transform: none; }.import-option > input, .stem-file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }.import-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: linear-gradient(145deg, #785be5, #d45e9d); color: white; font-size: 20px; box-shadow: 0 9px 24px #8d6cff2d; }.import-option strong, .import-option small { display: block; }.import-option strong { font-size: 13px; }.import-option small { min-height: 33px; margin-top: 6px; color: #85838f; font-size: 9px; line-height: 1.5; }.import-option > i, .stem-file-button { margin-top: auto; border: 1px solid #9b7bff4f; border-radius: 9px; background: #8d6cff13; color: #c8b9ff; padding: 9px 11px; font: 800 7px/1 ui-monospace, monospace; letter-spacing: .08em; font-style: normal; }.stem-option { cursor: default; }.stem-option:hover { transform: none; }.stem-option select { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: #111119; color: #d8d6e0; padding: 0 9px; font-size: 9px; }.stem-file-button { position: relative; display: inline-flex; cursor: pointer; }.import-error { margin: 12px 0 0; border: 1px solid #f45f8360; border-radius: 10px; background: #f45f8310; color: #ff9ab1; padding: 10px 12px; font-size: 9px; }.import-note { margin-top: 16px; color: #706f7a; font-size: 8px; }.import-note span { margin-right: 7px; color: #aaa8b4; font-weight: 700; }
 .batch-stem-option { grid-column: 1 / -1; min-height: 0; cursor: default; overflow: visible; }.batch-stem-option:hover { transform: none; }.batch-stem-header { width: 100%; display: grid; grid-template-columns: 42px 1fr; align-items: center; gap: 13px; }.batch-stem-controls { width: 100%; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: end; gap: 10px; }.batch-stem-controls > label:first-child > span { display: block; margin-bottom: 6px; color: #777580; font: 800 7px/1 ui-monospace, monospace; letter-spacing: .08em; }.batch-stem-controls input[type="text"] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; outline: 0; background: #111119; color: #e1dfe7; padding: 0 10px; font-size: 9px; }.batch-file-button { margin: 0; white-space: nowrap; }.stem-mapping-summary { width: 100%; border: 1px solid var(--line); border-radius: 10px; background: #09090e8c; padding: 10px; }.stem-mapping-counts { display: flex; gap: 8px; align-items: center; font: 750 8px/1 ui-monospace, monospace; }.stem-mapping-counts strong { color: #6ee6bf; font-size: 8px; }.stem-mapping-counts span { color: #8a8893; }.stem-mapping-counts b { color: #ff8ca6; }.stem-mapping-summary ul { max-height: 126px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px 10px; overflow: auto; margin: 10px 0 0; padding: 0; list-style: none; }.stem-mapping-summary li { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-radius: 6px; background: #ffffff04; padding: 6px 7px; font: 7px/1 ui-monospace, monospace; }.stem-mapping-summary li > span { min-width: 0; overflow: hidden; color: #b8b5c1; text-overflow: ellipsis; white-space: nowrap; }.stem-mapping-summary li > b { flex: 0 0 auto; color: #6ee6bf; font-size: 6px; letter-spacing: .06em; }.stem-mapping-summary .mapping-skipped > b { color: #777580; }.stem-mapping-summary .mapping-error > b { color: #ff8ca6; }.stem-mapping-summary p { margin: 9px 0 0; color: #777580; font-size: 8px; }.batch-import-button { align-self: flex-end; border: 0; border-radius: 9px; background: linear-gradient(100deg, var(--purple), var(--pink)); color: white; padding: 10px 14px; font: 800 7px/1 ui-monospace, monospace; letter-spacing: .08em; cursor: pointer; }.batch-import-button:disabled { background: #ffffff09; color: #5e5c67; cursor: not-allowed; }
 
+/* Readability pass: keep the dense timeline compact while making the studio legible at a glance. */
+.nav-group > small { font-size: 10px; }
+.nav-item { font-size: 13px; }
+.project-link, .profile strong { font-size: 12px; }
+.profile small, .profile > span { font-size: 10px; }
+.page-header > div:first-child, .page-actions button { font-size: 12px; }
+.page-header small { font-size: 10px; }
+.ai-label, .overline { font-size: 9px; }
+.create-card > p { font-size: 12px; }
+.prompt-box input { font-size: 13px; }
+.voice-button > small { font-size: 11px; }
+.prompt-footer small, .suggestions button { font-size: 9px; }
+.live-assistant-reply > span { font-size: 8px; }
+.live-assistant-reply p { font-size: 11px; }
+.judge-copy > p, .judge-actions > button { font-size: 10px; }
+.export-menu button strong { font-size: 10px; }
+.export-menu button small, .export-menu button > i, .export-menu > p { font-size: 8px; }
+.export-menu button > b { font-size: 9px; }
+.live-countdown span { font-size: 8px; }
+.live-countdown small, .live-queue-ops span { font-size: 7px; }
+.live-queue-copy p { font-size: 9px; }
+.diff-heading p { font-size: 10px; }
+.diff-count span, .protected-row strong, .diff-verb, .diff-target small, .diff-footer > div:first-child { font-size: 8px; }
+.protected-row, .diff-values, .diff-footer button { font-size: 9px; }
+.diff-target strong { font-size: 10px; }
+.song-info p { font-size: 10px; }
+.song-tags span { font-size: 8px; }
+.master-overview::before, .master-time { font-size: 7px; }
+.master-section-marker, .master-live-cue i { font-size: 6px; }
+.card-heading h2, .inspector-heading h2 { font-size: 16px; }
+.editor-tools small, .current-section { font-size: 9px; }
+.track-label-spacer span, .bar-ruler span { font-size: 8px; }
+.track-header strong { font-size: 10px; letter-spacing: .055em; }
+.track-header small, .mute-button { font-size: 8px; }
+.clip > span, .ghost-clip span { font-size: 8px; }
+.automation-badge { font-size: 7px !important; }
+.live-cue-line span { font-size: 7px; }
+.inspector-heading button { font-size: 10px; }
+.section-preview strong { font-size: 11px; }
+.section-preview span { font-size: 9px; }
+.section-mix-title, .section-mix > div > strong, .section-mix > div > span { font-size: 8px; }
+.control-block > label, .history-title { font-size: 10px; }
+.nudge-controls button { font-size: 9px; }
+.range-labels, .history-title small { font-size: 8px; }
+.activity-item strong { font-size: 9px; }
+.activity-item p { font-size: 8px; }
+.mini-song strong { font-size: 11px; }
+.mini-song span, .progress-row, .player-right label { font-size: 8px; }
+.import-heading p { font-size: 11px; }
+.import-bpm strong, .import-bpm input, .import-option small, .stem-option select, .import-error, .batch-stem-controls input[type="text"] { font-size: 10px; }
+.import-bpm small, .import-note, .stem-mapping-counts, .stem-mapping-counts strong, .stem-mapping-summary p { font-size: 9px; }
+.import-bpm > span:last-child, .import-option > i, .stem-file-button, .batch-stem-controls > label:first-child > span, .batch-import-button { font-size: 8px; }
+.stem-mapping-summary li { font-size: 8px; }
+.stem-mapping-summary li > b { font-size: 7px; }
+
 @keyframes voicePulse { 50% { box-shadow: 0 0 0 7px #8d6cff26; } }
 @keyframes voiceReadyPulse { 50% { box-shadow: 0 0 0 6px #a37fff20, 0 12px 34px #8d6cff42; } }
 @keyframes ghostIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
