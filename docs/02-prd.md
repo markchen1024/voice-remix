@@ -126,8 +126,9 @@ The repository already includes:
 - four MIDI exports: Drums, Percussion, Bass, Synth
 - per-pixel waveform peak envelopes rendered on Canvas
 - real stem playback and track mute controls
+- browser-local full-song import and synchronized individual-stem replacement
 - section selection, energy control, local command parsing, and undo
-- browser speech-recognition prototype
+- OpenAI Realtime voice conversation with request-based transcription fallback
 
 The FX stem is effectively silent and must be labelled as such rather than visually normalized.
 
@@ -209,7 +210,7 @@ Every operation includes stable IDs, before/after values, and a human-readable e
 
 - persistent producer preference memory
 - arrangement branches and cross-branch merge
-- user uploads and automated stem analysis
+- persistent imported projects and automated stem/section analysis
 - automatic section detection and confidence display
 - video/voice-over-aware arrangements
 - DAW project export and plugin integration

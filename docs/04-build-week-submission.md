@@ -9,7 +9,7 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 
 | Requirement | Status | Next action |
 |---|---|---|
-| Working, non-trivial implementation | Verified locally | Production build, lint, and 50/50 tests passed on July 19 |
+| Working, non-trivial implementation | Verified locally | Production build, lint, and 53/53 tests passed on July 19 |
 | Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
@@ -33,7 +33,7 @@ If the repository remains private, share it with:
 Recorded on July 19, 2026:
 
 - `npm run lint`: passed.
-- `npm test`: production build passed; 50 tests passed and 0 failed.
+- `npm test`: production build passed; 53 tests passed and 0 failed.
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
@@ -65,6 +65,7 @@ Use these facts to write the final description yourself.
 ### What it does
 
 - Plays five synchronized stems from a real demo arrangement.
+- Imports a local full song or replaces an individual synchronized stem without uploading the audio.
 - Accepts spoken or typed music-edit requests and replies in concise studio English.
 - Uses GPT-5.6 Sol to translate contextual requests into constrained music operations.
 - Shows a Music Diff, protected stems, before/after values, assumptions, and ghost timeline preview.
@@ -103,9 +104,9 @@ Use these facts to write the final description yourself.
 
 ### Next steps
 
-- Section-scoped stem automation and richer Realtime function-tool coverage.
-- Automatic section analysis and user-uploaded stems.
-- Actual region rendering/time-stretching and DAW export.
+- Downloadable rendered audio for the committed arrangement.
+- Public judge deployment and a compact first-run demo path.
+- Batch stem mapping and automatic section analysis.
 - Persistent projects, collaboration, and shareable edit histories.
 
 ## 4. Evidence to capture
