@@ -9,6 +9,7 @@ export type DemoProject = {
   duration: number;
   coverUrl: string;
   featuredCommand: string;
+  suggestions: readonly string[];
   project: Project;
 };
 
@@ -19,6 +20,12 @@ const neonPulseLoop: DemoProject = {
   duration: 119.4,
   coverUrl: "/audio/neon-pulse-loop/cover.jpg",
   featuredCommand: "Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.",
+  suggestions: [
+    "Move the final chorus 4 bars earlier",
+    "Make the drums hit harder",
+    "Mute the synth in both hooks",
+    "Keep only bass and drums",
+  ],
   project: {
     version: 1,
     totalBars: 59,
@@ -51,6 +58,12 @@ const kimiToHashiruMade: DemoProject = {
   duration: 215.99,
   coverUrl: "/audio/kimi-to-hashiru-made/cover.jpg",
   featuredCommand: "In the final chorus, mute the backing vocals and make the guitar 15% louder, but keep the lead vocal unchanged.",
+  suggestions: [
+    "Mute the backing vocals in the final chorus",
+    "Make the guitar 15% louder in both choruses",
+    "Keep only lead vocals, drums, bass, and guitar in the bridge",
+    "Lower the keyboards in the verses",
+  ],
   project: {
     version: 1,
     totalBars: 158,

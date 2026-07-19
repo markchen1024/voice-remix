@@ -128,6 +128,13 @@ const trackMatchers: Array<[RegExp, TrackId]> = [
   [/整首|母带|混音|master(?: mix)?|full mix/i, "mix"],
 ];
 
+function commandFragments(input: string) {
+  return input
+    .split(/[，。,.；;]|\bbut\b|\band\s+(?=(?:make|mute|unmute|keep|raise|lower|boost|cut|turn|remove|enable|add)\b)|(?:并且?|同时)(?=(?:静音|关闭|打开|恢复|提高|降低|增强))/i)
+    .map((fragment) => fragment.trim())
+    .filter(Boolean);
+}
+
 export function cloneProject(project: Project): Project {
   return JSON.parse(JSON.stringify(project)) as Project;
 }
@@ -255,9 +262,8 @@ export function createLocalTransaction(input: string, project: Project): EditTra
     assumptions.push("Ripple edit shortens the preceding section at the new boundary and shifts later sections by the same bar delta.");
   }
 
-  const protectionClauses = input
-    .split(/[，。,.；;]/)
-    .filter((clause) => /保持|不要变|别动|protect|unchanged/i.test(clause));
+  const fragments = commandFragments(input);
+  const protectionClauses = fragments.filter((clause) => /保持|不要变|别动|\bkeep\b|protect|unchanged/i.test(clause));
   for (const clause of protectionClauses) {
     const englishProtection = clause.match(/\b(?:keep|protect)\b/i);
     const protectedFragment = englishProtection ? clause.slice(englishProtection.index) : clause;
@@ -280,41 +286,44 @@ export function createLocalTransaction(input: string, project: Project): EditTra
       }
     }
   } else {
-    for (const [pattern, id] of trackMatchers) {
-      if (!pattern.test(input)) continue;
-      const track = project.tracks.find((item) => item.id === id);
-      if (!track || protectedTargets.includes(track.label)) continue;
-      if (scopedSections.length) {
+    for (const fragment of fragments.filter((item) => !protectionClauses.includes(item))) {
+      const wantsUnmute = /打开|恢复|加入|unmute|enable|add/i.test(fragment);
+      const wantsMute = !wantsUnmute && /静音|移除|关掉|关闭|\bmute\b|remove/i.test(fragment);
+      const wantsGainUp = /更响|更强|再强|有力量|加强|增强|提高|增加|louder|harder|stronger|raise|boost|turn up/i.test(fragment);
+      const wantsGainDown = /更轻|减弱|降低|减少|quieter|softer|lower|reduce|cut|turn down/i.test(fragment);
+      const percent = Math.min(0.5, Number(fragment.match(/(\d+)\s*%/)?.[1] ?? 25) / 100);
+
+      for (const [pattern, id] of trackMatchers) {
+        if (!pattern.test(fragment)) continue;
+        const track = project.tracks.find((item) => item.id === id);
+        if (!track || protectedTargets.includes(track.label)) continue;
+
         for (const scopedSection of scopedSections) {
-          const beforeEnabled = sectionTrackState(project, scopedSection.id, id).enabled;
-          if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && beforeEnabled) {
-            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: false, explanation: `Mute ${track.label} only in ${scopedSection.label}.`, selected: true });
-          } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !beforeEnabled) {
-            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled, afterEnabled: true, explanation: `Restore ${track.label} only in ${scopedSection.label}.`, selected: true });
+          const state = sectionTrackState(project, scopedSection.id, id);
+          if (wantsMute && state.enabled) {
+            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled: state.enabled, afterEnabled: false, explanation: `Mute ${track.label} only in ${scopedSection.label}.`, selected: true });
+          } else if (wantsUnmute && !state.enabled) {
+            operations.push({ id: operationId(), action: "set_section_track_enabled", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeEnabled: state.enabled, afterEnabled: true, explanation: `Restore ${track.label} only in ${scopedSection.label}.`, selected: true });
+          }
+          if (wantsGainUp || wantsGainDown) {
+            const afterLevel = Math.max(0, Math.min(1.5, state.level + (wantsGainDown ? -percent : percent)));
+            if (afterLevel !== state.level) operations.push({ id: operationId(), action: "set_section_track_gain", targetId: id, targetLabel: `${track.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeLevel: state.level, afterLevel, explanation: `${wantsGainDown ? "Lower" : "Raise"} ${track.label} only in ${scopedSection.label}.`, selected: true });
           }
         }
-      } else if (/静音|移除|关掉|关闭|mute|remove/i.test(input) && track.enabled) {
-        operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: true, afterEnabled: false, explanation: `Mute ${track.label} without changing its source audio.`, selected: true });
-      } else if (/打开|恢复|加入|unmute|enable|add/i.test(input) && !track.enabled) {
-        operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: false, afterEnabled: true, explanation: `Restore ${track.label}.`, selected: true });
+
+        if (!scopedSections.length) {
+          if (wantsMute && track.enabled) operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: true, afterEnabled: false, explanation: `Mute ${track.label} without changing its source audio.`, selected: true });
+          else if (wantsUnmute && !track.enabled) operations.push({ id: operationId(), action: "set_track_enabled", targetId: id, targetLabel: track.label, beforeEnabled: false, afterEnabled: true, explanation: `Restore ${track.label}.`, selected: true });
+          if (wantsGainUp || wantsGainDown) {
+            const afterLevel = Math.max(0, Math.min(1.5, track.level + (wantsGainDown ? -percent : percent)));
+            if (afterLevel !== track.level) operations.push({ id: operationId(), action: "set_track_gain", targetId: id, targetLabel: track.label, beforeLevel: track.level, afterLevel, explanation: `${wantsGainDown ? "Lower" : "Raise"} ${track.label} across the song.`, selected: true });
+          }
+        }
       }
     }
   }
 
-  if (/鼓.*(?:更强|再强|有力量|加强|增强|提高)|(?:加强|增强|提高).*(?:鼓|drums?)|harder drums?|stronger drums?/i.test(input)) {
-    const drums = project.tracks.find((track) => track.id === "drums");
-    if (drums && !protectedTargets.includes(drums.label)) {
-      const gainDelta = Math.min(0.5, Number(input.match(/(\d+)\s*%/)?.[1] ?? 25) / 100);
-      if (scopedSections.length) {
-        for (const scopedSection of scopedSections) {
-          const beforeLevel = sectionTrackState(project, scopedSection.id, "drums").level;
-          operations.push({ id: operationId(), action: "set_section_track_gain", targetId: "drums", targetLabel: `${drums.label} · ${scopedSection.label}`, sectionId: scopedSection.id, sectionLabel: scopedSection.label, beforeLevel, afterLevel: Math.min(1.5, beforeLevel + gainDelta), explanation: `Raise drums only in ${scopedSection.label}.`, selected: true });
-        }
-      } else {
-        operations.push({ id: operationId(), action: "set_track_gain", targetId: "drums", targetLabel: drums.label, beforeLevel: drums.level, afterLevel: Math.min(1.5, drums.level + gainDelta), explanation: "Raise the drum stem across the song.", selected: true });
-      }
-    }
-  } else if (/更有力量|能量|更强|harder|energy/i.test(input) && targetChorus) {
+  if (!operations.some((operation) => operation.action === "set_track_gain" || operation.action === "set_section_track_gain") && /更有力量|能量|更强|harder|energy/i.test(input) && targetChorus) {
     operations.push({ id: operationId(), action: "set_section_energy", targetId: targetChorus.id, targetLabel: targetChorus.label, beforeEnergy: targetChorus.energy, afterEnergy: 1, explanation: `Increase ${targetChorus.label} energy metadata to 100%.`, selected: true });
   }
 

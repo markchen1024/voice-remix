@@ -142,7 +142,7 @@ test("local fallback scopes named-section stem commands", () => {
   assert.equal(synth.operations[0].sectionId, "verse-1");
 });
 
-test("local fallback understands vocal and guitar edits in the nine-stem demo", () => {
+test("local fallback keeps compound vocal and guitar actions isolated", () => {
   const vocalProject = {
     ...project,
     tracks: [
@@ -152,11 +152,22 @@ test("local fallback understands vocal and guitar edits in the nine-stem demo", 
       track("guitar", "GUITAR"),
     ],
   };
-  const transaction = createLocalTransaction("In the final chorus, mute the backing vocals but keep the lead vocal unchanged", vocalProject);
+  const transaction = createLocalTransaction("In the final chorus, mute the backing vocals and make the guitar 15% louder, but keep the lead vocal unchanged", vocalProject);
+  assert.ok(transaction);
+  assert.equal(transaction.operations.length, 2);
+  assert.deepEqual(transaction.operations.map((operation) => [operation.action, operation.targetId, operation.sectionId]), [
+    ["set_section_track_enabled", "backing_vocals", "chorus-2"],
+    ["set_section_track_gain", "guitar", "chorus-2"],
+  ]);
+  assert.equal(transaction.operations[1].afterLevel, 1.15);
+  assert.deepEqual(transaction.protectedTargets, ["LEAD VOCALS"]);
+});
+
+test("unmute commands never collapse into mute commands", () => {
+  const mutedProject = { ...project, tracks: project.tracks.map((item) => item.id === "synth" ? { ...item, enabled: false } : item) };
+  const transaction = createLocalTransaction("unmute the synth", mutedProject);
   assert.ok(transaction);
   assert.equal(transaction.operations.length, 1);
-  assert.equal(transaction.operations[0].action, "set_section_track_enabled");
-  assert.equal(transaction.operations[0].targetId, "backing_vocals");
-  assert.equal(transaction.operations[0].sectionId, "chorus-2");
-  assert.deepEqual(transaction.protectedTargets, ["LEAD VOCALS"]);
+  assert.equal(transaction.operations[0].action, "set_track_enabled");
+  assert.equal(transaction.operations[0].afterEnabled, true);
 });

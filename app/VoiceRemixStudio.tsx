@@ -291,6 +291,11 @@ export function VoiceRemixStudio() {
   const scheduledArrangement = useRef("");
   const proposedProject = useMemo(() => proposal ? applyOperations(project, proposal.operations) : null, [project, proposal]);
   const audibleProject = auditioningProposal && proposedProject ? proposedProject : project;
+  const promptSuggestions = DEMO_PROJECTS.find((demo) => demo.id === activeDemoId)?.suggestions ?? [
+    "Mute the drums in the final chorus",
+    "Make this section more energetic",
+    "Keep only the named instruments",
+  ];
 
   useEffect(() => {
     projectRef.current = project;
@@ -1232,7 +1237,7 @@ export function VoiceRemixStudio() {
           <span>Voice Remix</span>
         </div>
         <div className="nav-group">
-          <button className="nav-item active"><span>✦</span> Create</button>
+          <div className="nav-item active" aria-current="page"><span>✦</span> Create</div>
           <button className="nav-item judge-nav" onClick={startJudgeDemo}><span>▶</span> Judge demo</button>
         </div>
         <div className="nav-group secondary">
@@ -1313,7 +1318,7 @@ export function VoiceRemixStudio() {
             )}
             <div className="prompt-footer">
               <div className="suggestions">
-                {["Move the final chorus 4 bars earlier", "Make the drums hit harder", "Mute the synth in both hooks", "Keep only bass and drums"].map((suggestion) => <button key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
+                {promptSuggestions.map((suggestion) => <button type="button" key={suggestion} onClick={() => setCommand(suggestion)}>{suggestion}</button>)}
               </div>
               <small>{voiceState === "connecting" ? "Connecting OpenAI Realtime…" : voiceState === "recording" ? "Listening live · press ↑ when done" : voiceState === "transcribing" ? "Voice Remix is deciding which editor tool to use…" : voiceState === "responding" ? "Voice Remix is speaking · tap ◼ to interrupt" : planning ? "Planning a reversible Music Diff…" : "Realtime conversation · editor tools · next-bar execution"}</small>
             </div>

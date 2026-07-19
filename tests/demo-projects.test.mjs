@@ -16,6 +16,7 @@ test("demo catalog exposes two independent source-accurate projects", () => {
     assert.equal(sectionEnd, demo.project.totalBars);
     assert.equal(new Set(demo.project.tracks.map((track) => track.id)).size, demo.project.tracks.length);
     assert.ok(existsSync(publicFile(demo.coverUrl)), `${demo.title} cover should exist`);
+    assert.equal(demo.suggestions.length, 4);
   }
 });
 
