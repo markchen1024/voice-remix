@@ -15,7 +15,7 @@ import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeConversation, type RealtimeConversationClient, type RealtimeToolCall } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
-import { analyzeDecodedAudio, createFullMixProject, filenameTitle, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset } from "./local-audio-import";
+import { analyzeDecodedAudio, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset, type MappedStemAsset } from "./local-audio-import";
 import { DEMO_PROJECTS, INITIAL_DEMO, type DemoProject, type DemoProjectId } from "./demo-projects";
 
 const INITIAL_PROJECT = INITIAL_DEMO.project;
@@ -260,6 +260,8 @@ export function VoiceRemixStudio() {
   const [importError, setImportError] = useState("");
   const [importTarget, setImportTarget] = useState<TrackId>("drums");
   const [importBpm, setImportBpm] = useState(INITIAL_PROJECT.bpm);
+  const [batchStemFiles, setBatchStemFiles] = useState<File[]>([]);
+  const [batchProjectTitle, setBatchProjectTitle] = useState("Imported Stem Project");
   const [energyDrafts, setEnergyDrafts] = useState<Record<string, number>>({});
   const [exportOpen, setExportOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<"idle" | "rendering" | "ready" | "error">("idle");
@@ -291,6 +293,7 @@ export function VoiceRemixStudio() {
   const scheduledArrangement = useRef("");
   const proposedProject = useMemo(() => proposal ? applyOperations(project, proposal.operations) : null, [project, proposal]);
   const audibleProject = auditioningProposal && proposedProject ? proposedProject : project;
+  const batchStemMappings = useMemo(() => mapStemFilenames(batchStemFiles.map((file) => file.name)), [batchStemFiles]);
   const promptSuggestions = DEMO_PROJECTS.find((demo) => demo.id === activeDemoId)?.suggestions ?? [
     "Mute the drums in the final chorus",
     "Make this section more energetic",
@@ -1116,6 +1119,44 @@ export function VoiceRemixStudio() {
     }
   };
 
+  const importStemSet = async () => {
+    if (importingAudio) return;
+    const recognized = batchStemMappings.filter((mapping) => mapping.trackId && !mapping.duplicate);
+    if (recognized.length < 2 || batchStemMappings.some((mapping) => mapping.duplicate)) return;
+    setImportingAudio(true);
+    setImportError("");
+    const decodedStems: MappedStemAsset[] = [];
+    try {
+      for (const mapping of recognized) {
+        if (!mapping.trackId) continue;
+        decodedStems.push({ trackId: mapping.trackId, asset: await decodeLocalAudio(batchStemFiles[mapping.index]) });
+      }
+      const nextProject = createStemProject(projectRef.current, decodedStems, importBpm);
+      const duration = decodedStems[0].asset.duration;
+      releaseAllImportedAudio();
+      decodedStems.forEach(({ trackId, asset }) => {
+        importedObjectUrls.current[trackId] = [asset.audioUrl, asset.peaksUrl];
+      });
+      prepareImportedProject(
+        nextProject,
+        duration,
+        batchProjectTitle.trim() || "Imported Stem Project",
+        `${formatOverviewTime(duration)} · ${nextProject.totalBars} estimated bars · ${nextProject.tracks.length} synchronized stems`,
+        "Stem project imported",
+      );
+      setActiveDemoId(null);
+      setProjectGenre("Local multitrack · Browser-only stems");
+      setProjectCoverUrl("/brand/voice-remix-icon.png");
+      setImportTarget(nextProject.tracks[0].id);
+      setBatchStemFiles([]);
+    } catch (error) {
+      decodedStems.flatMap(({ asset }) => [asset.audioUrl, asset.peaksUrl]).forEach((url) => URL.revokeObjectURL(url));
+      setImportError(error instanceof Error ? error.message : "The stem set could not be imported.");
+    } finally {
+      setImportingAudio(false);
+    }
+  };
+
   const startJudgeDemo = () => {
     loadDemoProject(INITIAL_DEMO);
     setSelectedSection("chorus-2");
@@ -1193,6 +1234,10 @@ export function VoiceRemixStudio() {
   const renderedSections = auditioningProposal ? audibleProject.sections : project.sections;
   const voiceButtonLabel = voiceState === "recording" ? "Send voice turn" : voiceState === "responding" ? "Interrupt Voice Remix" : voiceState === "connecting" ? "Connecting realtime voice" : voiceState === "transcribing" ? "Voice Remix is thinking" : "Talk to Voice Remix";
   const availableStemTargets = project.tracks.filter((track) => REPLACEABLE_STEM_IDS.some((trackId) => trackId === track.id));
+  const recognizedBatchStemCount = batchStemMappings.filter((mapping) => mapping.trackId && !mapping.duplicate).length;
+  const duplicateBatchStemCount = batchStemMappings.filter((mapping) => mapping.duplicate).length;
+  const unmatchedBatchStemCount = batchStemMappings.filter((mapping) => !mapping.trackId).length;
+  const batchStemImportReady = recognizedBatchStemCount >= 2 && duplicateBatchStemCount === 0 && !importingAudio;
 
   return (
     <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
@@ -1201,7 +1246,7 @@ export function VoiceRemixStudio() {
           <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
             <div className="import-heading">
               <div><span className="overline">LOCAL AUDIO</span><h2 id="import-title">Import into the arrangement</h2><p>Audio is decoded in this browser and never uploaded.</p></div>
-              <button type="button" onClick={() => setImportOpen(false)} aria-label="Close audio import">×</button>
+              <button type="button" onClick={() => setImportOpen(false)} disabled={importingAudio} aria-label="Close audio import">×</button>
             </div>
             <label className="import-bpm">
               <span><strong>Song tempo</strong><small>Used to align the ruler and estimate section lengths for a full-song import.</small></span>
@@ -1225,9 +1270,46 @@ export function VoiceRemixStudio() {
                   {importingAudio ? "DECODING…" : "CHOOSE STEM"}
                 </label>
               </div>
+              <div className={`import-option batch-stem-option ${importingAudio ? "disabled" : ""}`}>
+                <div className="batch-stem-header">
+                  <span className="import-icon">≋</span>
+                  <span><strong>Build a project from synchronized stems</strong><small>Select the whole export folder. Track names are mapped before any audio is decoded.</small></span>
+                </div>
+                <div className="batch-stem-controls">
+                  <label>
+                    <span>PROJECT NAME</span>
+                    <input type="text" value={batchProjectTitle} maxLength={80} disabled={importingAudio} onChange={(event) => setBatchProjectTitle(event.target.value)} aria-label="Imported stem project name" />
+                  </label>
+                  <label className="stem-file-button batch-file-button">
+                    <input type="file" multiple accept="audio/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm" disabled={importingAudio} onChange={(event) => { setImportError(""); setBatchStemFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} />
+                    {batchStemFiles.length ? "CHOOSE AGAIN" : "CHOOSE STEMS"}
+                  </label>
+                </div>
+                {batchStemMappings.length > 0 && (
+                  <div className="stem-mapping-summary" aria-live="polite">
+                    <div className="stem-mapping-counts">
+                      <strong>{recognizedBatchStemCount} mapped</strong>
+                      {unmatchedBatchStemCount > 0 && <span>{unmatchedBatchStemCount} skipped</span>}
+                      {duplicateBatchStemCount > 0 && <b>{duplicateBatchStemCount} duplicates</b>}
+                    </div>
+                    <ul>
+                      {batchStemMappings.map((mapping) => (
+                        <li className={mapping.duplicate ? "mapping-error" : mapping.trackId ? "mapping-ready" : "mapping-skipped"} key={`${mapping.index}-${mapping.filename}`}>
+                          <span title={mapping.filename}>{mapping.filename}</span>
+                          <b>{mapping.duplicate ? "DUPLICATE" : mapping.trackId?.replaceAll("_", " ").toUpperCase() ?? "SKIP"}</b>
+                        </li>
+                      ))}
+                    </ul>
+                    <p>{duplicateBatchStemCount ? "Keep one file for each track." : recognizedBatchStemCount < 2 ? "Choose at least two recognized stems." : "Durations will be verified before the project is created."}</p>
+                  </div>
+                )}
+                <button className="batch-import-button" type="button" disabled={!batchStemImportReady} onClick={() => void importStemSet()}>
+                  {importingAudio ? "DECODING STEMS…" : `IMPORT ${recognizedBatchStemCount || ""} STEMS`}
+                </button>
+              </div>
             </div>
             {importError && <p className="import-error" role="alert">{importError}</p>}
-            <div className="import-note"><span>Supported</span> MP3, WAV, M4A, AAC, OGG, FLAC, WebM · maximum 250 MB</div>
+            <div className="import-note"><span>Supported</span> MP3, WAV, M4A, AAC, OGG, FLAC, WebM · maximum 250 MB per file</div>
           </section>
         </div>
       )}

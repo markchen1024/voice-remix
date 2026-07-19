@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeDecodedAudio, createFullMixProject, filenameTitle, projectBarsForDuration, replaceProjectStem } from "../app/local-audio-import.ts";
+import { analyzeDecodedAudio, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, matchStemTrackId, projectBarsForDuration, replaceProjectStem, validateMappedStemAssets } from "../app/local-audio-import.ts";
 
 const asset = {
   audioUrl: "blob:audio",
@@ -56,4 +56,58 @@ test("stem replacement preserves the arrangement and other tracks", () => {
   assert.equal(imported.sections[0].id, "verse-1");
   assert.deepEqual(imported.automation, []);
   assert.equal(project.tracks[0].audioUrl, "old");
+});
+
+test("Suno-style numbered stem names map to editor tracks", () => {
+  const names = [
+    "0 Lead Vocals.wav",
+    "1 Backing Vocals.wav",
+    "2 Drums.wav",
+    "3 Bass.wav",
+    "4 Guitar.wav",
+    "5 Keyboard.wav",
+    "6 Percussion.wav",
+    "7 Synth.wav",
+    "8 Other.wav",
+    "My Song.mp3",
+  ];
+  assert.deepEqual(mapStemFilenames(names).map(({ trackId }) => trackId), [
+    "lead_vocals", "backing_vocals", "drums", "bass", "guitar", "keyboards", "percussion", "synth", "other", null,
+  ]);
+  assert.equal(matchStemTrackId("Song - FX.flac"), "fx");
+  assert.equal(matchStemTrackId("和声.wav"), "backing_vocals");
+});
+
+test("duplicate filename mappings are surfaced before audio decoding", () => {
+  const mapped = mapStemFilenames(["Drums.wav", "Song - Drum Kit.wav", "Bass.wav"]);
+  assert.equal(mapped[0].duplicate, true);
+  assert.equal(mapped[1].duplicate, true);
+  assert.equal(mapped[2].duplicate, false);
+});
+
+test("mapped stems create an ordered multitrack project with shared arrangement", () => {
+  const stemAsset = (filename, duration = 128) => ({ ...asset, audioUrl: `blob:${filename}`, peaksUrl: `blob:${filename}-peaks`, duration, filename });
+  const imported = createStemProject(project, [
+    { trackId: "synth", asset: stemAsset("Synth.wav") },
+    { trackId: "drums", asset: stemAsset("Drums.wav") },
+    { trackId: "bass", asset: stemAsset("Bass.wav") },
+  ], 128);
+
+  assert.equal(imported.bpm, 128);
+  assert.deepEqual(imported.tracks.map((track) => track.id), ["drums", "bass", "synth"]);
+  assert.equal(imported.totalBars, projectBarsForDuration(128, 128));
+  assert.equal(imported.sections.at(-1).startBar + imported.sections.at(-1).lengthBars, imported.totalBars);
+  assert.deepEqual(imported.automation, []);
+});
+
+test("batch validation rejects duplicate or unsynchronized stems", () => {
+  const stemAsset = (filename, duration = 120) => ({ ...asset, duration, filename });
+  assert.throws(() => validateMappedStemAssets([
+    { trackId: "drums", asset: stemAsset("Drums A.wav") },
+    { trackId: "drums", asset: stemAsset("Drums B.wav") },
+  ]), /More than one file maps to drums/);
+  assert.throws(() => validateMappedStemAssets([
+    { trackId: "drums", asset: stemAsset("Drums.wav") },
+    { trackId: "bass", asset: stemAsset("Bass.wav", 116) },
+  ]), /Export synchronized stems/);
 });
