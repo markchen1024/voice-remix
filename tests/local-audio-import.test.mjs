@@ -34,8 +34,9 @@ test("decoded browser audio produces honest peak envelopes and levels", () => {
 });
 
 test("full song imports become a single editable master mix", () => {
-  const imported = createFullMixProject(project, asset, 120);
-  assert.equal(imported.totalBars, projectBarsForDuration(120, 120));
+  const imported = createFullMixProject(project, asset, 96);
+  assert.equal(imported.bpm, 96);
+  assert.equal(imported.totalBars, projectBarsForDuration(120, 96));
   assert.equal(imported.tracks.length, 1);
   assert.equal(imported.tracks[0].id, "mix");
   assert.equal(imported.tracks[0].label, "MASTER MIX");

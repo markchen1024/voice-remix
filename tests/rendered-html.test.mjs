@@ -19,6 +19,7 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
+  assert.match(html, /<html lang="en">/);
   assert.match(html, /<title>Voice Remix/);
   assert.match(html, /Voice Remix/);
   assert.match(html, /Neon Pulse Loop/);
@@ -30,5 +31,6 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /VISUAL EDITOR/);
   assert.match(html, /aria-label="Playback position"/);
   assert.match(html, /type="range"/);
+  assert.doesNotMatch(html, />Share<\/button>/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/);
 });

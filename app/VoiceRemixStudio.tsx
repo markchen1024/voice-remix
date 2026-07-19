@@ -259,6 +259,8 @@ export function VoiceRemixStudio() {
   const [importingAudio, setImportingAudio] = useState(false);
   const [importError, setImportError] = useState("");
   const [importTarget, setImportTarget] = useState<TrackId>("drums");
+  const [importBpm, setImportBpm] = useState(INITIAL_PROJECT.bpm);
+  const [energyDrafts, setEnergyDrafts] = useState<Record<string, number>>({});
   const [activity, setActivity] = useState([
     { title: "Suno stems imported", detail: "1:59 · 59 bars · 5 real audio tracks", time: "NOW" },
   ]);
@@ -586,6 +588,27 @@ export function VoiceRemixStudio() {
       selected: true,
     }]);
     commit(next, `Moved ${section.label}`, `${delta > 0 ? "+" : ""}${delta} bar${Math.abs(delta) === 1 ? "" : "s"}`);
+  };
+
+  const commitSectionEnergy = (value: number) => {
+    const section = projectRef.current.sections.find((item) => item.id === selectedSection);
+    if (!section) return;
+    const energy = Math.max(0.1, Math.min(1, value));
+    setEnergyDrafts((current) => {
+      const next = { ...current };
+      delete next[selectedSection];
+      return next;
+    });
+    if (section.energy === energy) return;
+    const next = cloneProject(projectRef.current);
+    next.sections.find((item) => item.id === selectedSection)!.energy = energy;
+    commit(next, `Adjusted ${section.label} energy`, `${Math.round(section.energy * 100)}% → ${Math.round(energy * 100)}%`);
+  };
+
+  const openImport = () => {
+    setImportError("");
+    setImportBpm(projectRef.current.bpm);
+    setImportOpen(true);
   };
 
   const executeImmediateEditorCommand = async (editorCommand: ImmediateEditorCommand) => {
@@ -1019,7 +1042,7 @@ export function VoiceRemixStudio() {
     let asset: LocalAudioAsset | null = null;
     try {
       asset = await decodeLocalAudio(file);
-      const nextProject = createFullMixProject(projectRef.current, asset);
+      const nextProject = createFullMixProject(projectRef.current, asset, importBpm);
       releaseAllImportedAudio();
       importedObjectUrls.current.mix = [asset.audioUrl, asset.peaksUrl];
       prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} estimated bars · master mix`);
@@ -1071,6 +1094,7 @@ export function VoiceRemixStudio() {
   };
 
   const selected = project.sections.find((section) => section.id === selectedSection)!;
+  const selectedEnergyDraft = energyDrafts[selected.id] ?? selected.energy;
   const active = sectionAt(project, Math.floor(position));
   const barLabels = useMemo(() => Array.from({ length: project.totalBars }, (_, index) => index + 1), [project.totalBars]);
   const selectedProposalOperations = proposal?.operations.filter((operation) => operation.selected) ?? [];
@@ -1094,6 +1118,10 @@ export function VoiceRemixStudio() {
               <div><span className="overline">LOCAL AUDIO</span><h2 id="import-title">Import into the arrangement</h2><p>Audio is decoded in this browser and never uploaded.</p></div>
               <button type="button" onClick={() => setImportOpen(false)} aria-label="Close audio import">×</button>
             </div>
+            <label className="import-bpm">
+              <span><strong>Song tempo</strong><small>Used to align the ruler and estimate section lengths for a full-song import.</small></span>
+              <span><input type="number" min="40" max="240" value={importBpm} disabled={importingAudio} onChange={(event) => setImportBpm(Math.max(40, Math.min(240, Number(event.target.value) || project.bpm)))} aria-label="Imported song tempo" /> BPM</span>
+            </label>
             <div className="import-options">
               <label className={`import-option ${importingAudio ? "disabled" : ""}`}>
                 <input type="file" accept="audio/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm" disabled={importingAudio} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importFullSong(file); }} />
@@ -1122,16 +1150,13 @@ export function VoiceRemixStudio() {
         <div className="logo"><i>V</i><span>Voice Remix</span></div>
         <div className="nav-group">
           <button className="nav-item active"><span>✦</span> Create</button>
-          <button className="nav-item"><span>◫</span> Projects</button>
-          <button className="nav-item"><span>♫</span> Library</button>
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
           <button className="project-link"><i className="project-art" />{projectTitle}</button>
-          <button className="project-link faded" onClick={() => { setImportError(""); setImportOpen(true); }}><i className="add-project">＋</i>Import audio</button>
+          <button className="project-link faded" onClick={openImport}><i className="add-project">＋</i>Import audio</button>
         </div>
         <div className="sidebar-bottom">
-          <button className="nav-item"><span>?</span> Help & feedback</button>
           <div className="profile"><i>M</i><div><strong>Mark</strong><small>Build Week</small></div><span>•••</span></div>
         </div>
       </nav>
@@ -1142,8 +1167,7 @@ export function VoiceRemixStudio() {
           <div className="page-actions">
             <button onClick={undo} disabled={!canUndo}>↶ Undo</button>
             <button onClick={redo} disabled={!canRedo}>↷ Redo</button>
-            <button className="soft-button" onClick={() => { setImportError(""); setImportOpen(true); }}>Import audio</button>
-            <button className="soft-button">Share</button>
+            <button className="soft-button" onClick={openImport}>Import audio</button>
             <button className="export-button" onClick={exportProject}>Export <span>↓</span></button>
           </div>
         </header>
@@ -1227,7 +1251,7 @@ export function VoiceRemixStudio() {
             <section className="arrangement-card">
               <div className="card-heading">
                 <div><span className="overline">VISUAL EDITOR</span><h2>Arrangement</h2></div>
-                <div className="editor-tools"><span className="current-section"><i />{active?.label ?? "Ready"}</span><button>−</button><small>100%</small><button>＋</button></div>
+                <div className="editor-tools"><span className="current-section"><i />{active?.label ?? "Ready"}</span></div>
               </div>
               <div className="playlist-scroll" ref={timelineScroll} data-active-section={active?.id ?? ""}>
                 <div className="track-label-spacer"><span>STEMS</span></div>
@@ -1276,7 +1300,7 @@ export function VoiceRemixStudio() {
             </section>
 
             <aside className="inspector-card">
-              <div className="inspector-heading"><div><span className="overline">SELECTED</span><h2>{selected.label}</h2></div><button>•••</button></div>
+              <div className="inspector-heading"><div><span className="overline">SELECTED</span><h2>{selected.label}</h2></div></div>
               <div className="section-preview"><div className={`section-icon ${selected.kind}`}>♪</div><div><strong>{selected.label}</strong><span>Bars {selected.startBar + 1}–{selected.startBar + selected.lengthBars}</span></div></div>
               <div className="section-mix" aria-label={`${selected.label} stem state`}>
                 <div className="section-mix-title"><span>SECTION MIX</span><small>{auditioningProposal ? "PROPOSED" : "CURRENT"}</small></div>
@@ -1287,20 +1311,16 @@ export function VoiceRemixStudio() {
                 })}
               </div>
               <div className="control-block"><label>Position <strong>Bar {selected.startBar + 1}</strong></label><div className="nudge-controls"><button onClick={() => nudgeSection(-1)}>← Earlier</button><button onClick={() => nudgeSection(1)}>Later →</button></div></div>
-              <div className="control-block"><label>Energy <strong>{Math.round(selected.energy * 100)}%</strong></label><input type="range" min="0.1" max="1" step="0.05" value={selected.energy} onChange={(event) => {
-                const next = cloneProject(project);
-                next.sections.find((section) => section.id === selected.id)!.energy = Number(event.target.value);
-                setProject(next);
-              }} /><div className="range-labels"><span>Calm</span><span>Intense</span></div></div>
+              <div className="control-block"><label>Energy <strong>{Math.round(selectedEnergyDraft * 100)}%</strong></label><input type="range" min="0.1" max="1" step="0.05" value={selectedEnergyDraft} onChange={(event) => setEnergyDrafts((current) => ({ ...current, [selected.id]: Number(event.target.value) }))} onPointerUp={() => commitSectionEnergy(selectedEnergyDraft)} onBlur={() => commitSectionEnergy(selectedEnergyDraft)} /><div className="range-labels"><span>Calm</span><span>Intense</span></div></div>
               <div className="history-block"><div className="history-title"><span>Recent edits</span><small>{activity.length}</small></div>{activity.slice(0, 3).map((item, index) => <div className="activity-item" key={`${item.title}-${index}`}><i /><div><strong>{item.title}</strong><p>{item.detail}</p></div></div>)}</div>
             </aside>
           </div>
         </div>
 
         <footer className="player-bar">
-          <div className="mini-song"><CoverArt mini /><div><strong>{projectTitle}</strong><span>{active?.label ?? "Ready"} · {project.tracks.length === 1 ? "Master mix" : "Imported stems"}</span></div><button>♡</button></div>
+          <div className="mini-song"><CoverArt mini /><div><strong>{projectTitle}</strong><span>{active?.label ?? "Ready"} · {project.tracks.length === 1 ? "Master mix" : "Imported stems"}</span></div></div>
           <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{formatOverviewTime(position / project.totalBars * audioDuration)}</span><input className="progress-track" style={{ "--progress": `${position / project.totalBars * 100}%` } as React.CSSProperties} type="range" min="0" max={project.totalBars - 0.001} step="0.01" value={position} onInput={(event) => scrubToBar(Number(event.currentTarget.value))} onChange={(event) => scrubToBar(Number(event.currentTarget.value))} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromPointer(event); }} aria-label="Playback position" aria-valuetext={`Bar ${Math.floor(position) + 1}`} /><span>{formatOverviewTime(audioDuration)}</span></div></div>
-          <div className="player-right"><label htmlFor="tempo">BPM</label><input id="tempo" type="number" min="60" max="180" value={project.bpm} onChange={(event) => setProject({ ...project, bpm: Number(event.target.value) })} /><span>◖)))</span></div>
+          <div className="player-right"><label>BPM</label><strong>{project.bpm}</strong><span>◖)))</span></div>
         </footer>
       </section>
     </main>
