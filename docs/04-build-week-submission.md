@@ -13,9 +13,9 @@ This is an internal completion worksheet, not finished Devpost copy. Rewrite the
 | Uses GPT-5.6 | Verified locally | Live smoke test returned two operations and protected `BASS` |
 | Codex used throughout the build | Done | Retrieve the primary task `/feedback` Session ID |
 | Track selected | Done | Submit under **Apps for Your Life** |
-| Repository with setup and sample data | Connected | Push the final documentation commit to `markchen1024/voice-remix` |
+| Repository with setup and sample data | Published | Public at `github.com/markchen1024/voice-remix` |
 | Relevant repository license | Done | Source and docs use MIT; demo media is explicitly excluded |
-| Private repository judge access | Conditional | Invite both official judge addresses if it stays private |
+| Private repository judge access | Not required | Repository is public |
 | Public demo URL | Workspace blocked | Sites reports that hosting is not enabled for this workspace; use an enabled workspace or another host |
 | Public YouTube demo under 3 minutes | Pending recording | Follow `docs/05-demo-video.md` |
 | Devpost text description | Entrant action | Use the factual worksheet below, rewritten personally |
@@ -37,9 +37,9 @@ Recorded on July 19, 2026:
 - Live `/api/plan-edit` smoke test: `gpt-5.6-sol`, 2 operations, protected `BASS`.
 - Sites deployment: blocked before site creation because Sites is not enabled for the current workspace.
 - Configured Git remote: `https://github.com/markchen1024/voice-remix.git`.
-- GitHub CLI: authenticated as `markchen1024` with admin access to the repository.
+- GitHub CLI: authenticated as `markchen1024` with admin access to the public repository.
 
-The repository is ready to be made public after this open-source preparation commit is pushed.
+The repository is public, includes an MIT License for source and documentation, and carries a separate demo-media notice.
 
 ## 2. One-minute judge path
 
@@ -129,7 +129,7 @@ Do not show API keys, browser bookmarks, private account data, local file paths,
 - [ ] YouTube video is public, audible, legible, and shorter than three minutes.
 - [ ] Devpost description and category are complete.
 - [ ] `/feedback` Session ID is saved in the submission.
-- [ ] Repository is public with an entrant-approved license, or both judge accounts have private access.
+- [x] Repository is public with an entrant-approved license, or both judge accounts have private access.
 - [ ] Every team invitation is accepted.
 - [ ] Music and image rights have been confirmed.
 - [ ] Submission is saved before the deadline; do not rely on last-minute uploads.
