@@ -1,3 +1,5 @@
+import { VOICE_REMIX_TOOL_RESPONSE_INSTRUCTIONS } from "./voice-remix-persona.ts";
+
 export type RealtimeToolCall = {
   callId: string;
   name: string;
@@ -171,7 +173,7 @@ export async function connectRealtimeConversation(callbacks: RealtimeConversatio
               type: "response.create",
               response: {
                 output_modalities: ["audio"],
-                instructions: "Briefly confirm the actual tool result in the user's language. Mention the next-bar cue if the edit was queued. Do not add a new action.",
+                instructions: VOICE_REMIX_TOOL_RESPONSE_INSTRUCTIONS,
               },
             });
           } else if (message.type === "error") {

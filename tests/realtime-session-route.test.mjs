@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRealtimeConversationSession, POST } from "../app/api/realtime-session/route.ts";
+import { VOICE_REMIX_SESSION_INSTRUCTIONS } from "../app/voice-remix-persona.ts";
 
 test("Realtime conversation sessions expose short-lived push-to-talk editor tools", () => {
   assert.deepEqual(createRealtimeConversationSession(), {
@@ -9,7 +10,7 @@ test("Realtime conversation sessions expose short-lived push-to-talk editor tool
       type: "realtime",
       model: "gpt-realtime-2.1",
       output_modalities: ["audio"],
-      instructions: "You are Voice Remix, a live music copilot inside a multitrack editor. Reply in the user's language. Always use an editor tool for any requested action, wait for the tool result, then confirm what actually happened in one short sentence. Never claim an edit was applied when it was only queued or auditioned. Ask one concise question only when the intent is genuinely ambiguous.",
+      instructions: VOICE_REMIX_SESSION_INSTRUCTIONS,
       audio: {
         input: {
           transcription: { model: "gpt-4o-mini-transcribe" },

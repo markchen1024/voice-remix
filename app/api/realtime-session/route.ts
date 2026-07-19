@@ -1,3 +1,5 @@
+import { VOICE_REMIX_SESSION_INSTRUCTIONS } from "../../voice-remix-persona.ts";
+
 const OPENAI_REALTIME_CLIENT_SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
 
 export function createRealtimeConversationSession(model = "gpt-realtime-2.1", transcriptionModel = "gpt-4o-mini-transcribe") {
@@ -7,7 +9,7 @@ export function createRealtimeConversationSession(model = "gpt-realtime-2.1", tr
       type: "realtime",
       model,
       output_modalities: ["audio"],
-      instructions: "You are Voice Remix, a live music copilot inside a multitrack editor. Reply in the user's language. Always use an editor tool for any requested action, wait for the tool result, then confirm what actually happened in one short sentence. Never claim an edit was applied when it was only queued or auditioned. Ask one concise question only when the intent is genuinely ambiguous.",
+      instructions: VOICE_REMIX_SESSION_INSTRUCTIONS,
       audio: {
         input: {
           transcription: { model: transcriptionModel },
