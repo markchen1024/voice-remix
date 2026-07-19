@@ -23,6 +23,7 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /<title>Voice Remix/);
   assert.match(html, /Voice Remix/);
   assert.match(html, /Neon Pulse Loop/);
+  assert.match(html, /君と走るまで/);
   assert.match(html, /5 stems/);
   assert.match(html, /59<!-- --> bars/);
   assert.match(html, /LIVE SESSION/);
@@ -32,6 +33,11 @@ test("server-renders the Voice Remix studio shell", async () => {
   assert.match(html, /aria-haspopup="menu"/);
   assert.match(html, />Export<!-- -->/);
   assert.match(html, /VISUAL EDITOR/);
+  assert.match(html, /data-track-icon="drums"/);
+  assert.match(html, /data-track-icon="percussion"/);
+  assert.match(html, /data-track-icon="bass"/);
+  assert.match(html, /data-track-icon="synth"/);
+  assert.match(html, /data-track-icon="fx"/);
   assert.match(html, /aria-label="Playback position"/);
   assert.match(html, /type="range"/);
   assert.doesNotMatch(html, />Share<\/button>/);

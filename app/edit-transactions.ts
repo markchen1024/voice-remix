@@ -1,5 +1,5 @@
 export type SectionKind = "intro" | "verse" | "break" | "chorus" | "outro";
-export type TrackId = "drums" | "percussion" | "bass" | "synth" | "fx" | "mix";
+export type TrackId = "lead_vocals" | "backing_vocals" | "drums" | "percussion" | "bass" | "guitar" | "keyboards" | "synth" | "fx" | "other" | "mix";
 
 export type Section = {
   id: string;
@@ -115,11 +115,16 @@ export type EditTransaction = {
 };
 
 const trackMatchers: Array<[RegExp, TrackId]> = [
+  [/主唱|人声|lead vocals?|lead singer/i, "lead_vocals"],
+  [/和声|伴唱|backing vocals?|background vocals?/i, "backing_vocals"],
   [/鼓|drums?/i, "drums"],
   [/打击乐|percussion/i, "percussion"],
   [/贝斯|bass/i, "bass"],
-  [/合成器|和弦|主旋律|synth|chords?|lead/i, "synth"],
+  [/吉他|guitars?/i, "guitar"],
+  [/键盘|钢琴|keyboards?|piano/i, "keyboards"],
+  [/合成器|和弦|主旋律|synth|chords?/i, "synth"],
   [/效果|氛围|fx|effects?/i, "fx"],
+  [/其他|其它|other/i, "other"],
   [/整首|母带|混音|master(?: mix)?|full mix/i, "mix"],
 ];
 
@@ -254,8 +259,10 @@ export function createLocalTransaction(input: string, project: Project): EditTra
     .split(/[，。,.；;]/)
     .filter((clause) => /保持|不要变|别动|protect|unchanged/i.test(clause));
   for (const clause of protectionClauses) {
+    const englishProtection = clause.match(/\b(?:keep|protect)\b/i);
+    const protectedFragment = englishProtection ? clause.slice(englishProtection.index) : clause;
     for (const [pattern, id] of trackMatchers) {
-      if (pattern.test(clause)) protectedTargets.push(project.tracks.find((track) => track.id === id)?.label ?? id.toUpperCase());
+      if (pattern.test(protectedFragment)) protectedTargets.push(project.tracks.find((track) => track.id === id)?.label ?? id.toUpperCase());
     }
   }
 

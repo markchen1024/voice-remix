@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const transcription = await client.audio.transcriptions.create({
       file: audio,
       model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-4o-mini-transcribe",
-      prompt: "English music editing commands. Common terms: drums, percussion, bass, synth, effects, verse, hook, final chorus, bar, move earlier, mute, boost, loop, audition, undo.",
+      prompt: "English music editing commands. Common terms: lead vocals, backing vocals, drums, percussion, bass, guitar, keyboards, synth, effects, verse, hook, final chorus, bridge, bar, move earlier, mute, boost, loop, audition, undo.",
     });
     const text = transcription.text.trim();
     if (!text) return Response.json({ code: "empty_transcript" }, { status: 422 });

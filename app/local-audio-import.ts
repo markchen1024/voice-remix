@@ -1,7 +1,7 @@
 import type { PeakEnvelope } from "./master-waveform.ts";
 import { cloneProject, type Project, type Section, type TrackId } from "./edit-transactions.ts";
 
-export const REPLACEABLE_STEM_IDS = ["drums", "percussion", "bass", "synth", "fx"] as const satisfies readonly TrackId[];
+export const REPLACEABLE_STEM_IDS = ["lead_vocals", "backing_vocals", "drums", "percussion", "bass", "guitar", "keyboards", "synth", "fx", "other"] as const satisfies readonly TrackId[];
 
 export type DecodedAudioLike = {
   duration: number;

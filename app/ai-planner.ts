@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { EditorContext } from "./editor-context";
 import { sectionTrackState, type EditOperation, type EditTransaction, type Project, type TrackId } from "./edit-transactions.ts";
 
-const trackIds = ["drums", "percussion", "bass", "synth", "fx", "mix"] as const;
+const trackIds = ["lead_vocals", "backing_vocals", "drums", "percussion", "bass", "guitar", "keyboards", "synth", "fx", "other", "mix"] as const;
 
 export const MusicEditPlan = z.object({
   summary: z.string(),

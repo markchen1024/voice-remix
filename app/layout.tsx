@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: "Voice Remix — Speak your arrangement",
     description: "Edit a musical arrangement with natural language and hear the result instantly.",
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    icons: { icon: "/favicon.png", shortcut: "/favicon.png" },
     openGraph: {
       title: "Voice Remix",
       description: "Say it. See it. Shape it.",

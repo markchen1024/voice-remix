@@ -141,3 +141,22 @@ test("local fallback scopes named-section stem commands", () => {
   assert.equal(synth.operations[0].action, "set_section_track_enabled");
   assert.equal(synth.operations[0].sectionId, "verse-1");
 });
+
+test("local fallback understands vocal and guitar edits in the nine-stem demo", () => {
+  const vocalProject = {
+    ...project,
+    tracks: [
+      track("lead_vocals", "LEAD VOCALS"),
+      track("backing_vocals", "BACKING VOCALS"),
+      track("drums", "DRUMS"),
+      track("guitar", "GUITAR"),
+    ],
+  };
+  const transaction = createLocalTransaction("In the final chorus, mute the backing vocals but keep the lead vocal unchanged", vocalProject);
+  assert.ok(transaction);
+  assert.equal(transaction.operations.length, 1);
+  assert.equal(transaction.operations[0].action, "set_section_track_enabled");
+  assert.equal(transaction.operations[0].targetId, "backing_vocals");
+  assert.equal(transaction.operations[0].sectionId, "chorus-2");
+  assert.deepEqual(transaction.protectedTargets, ["LEAD VOCALS"]);
+});

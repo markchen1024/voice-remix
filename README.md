@@ -16,6 +16,8 @@ Voice Remix sits between those two experiences. GPT-5.6 interprets creative inte
 
 ## Featured demo
 
+The workspace includes two switchable, source-accurate arrangements: the five-stem instrumental **Neon Pulse Loop** and the nine-stem Japanese J-rock song **君と走るまで**. Each keeps its own cover, BPM, duration, section map, waveform peaks, and featured AI edit.
+
 Enter or speak:
 
 ```text
@@ -37,8 +39,8 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 ## What is working
 
 - Local full-song import as a one-lane `MASTER MIX`, with browser-decoded duration, level analysis, and real waveform peaks
-- Local individual-stem replacement for Drums, Percussion, Bass, Synth, and FX with synchronized-duration validation
-- Five synchronized real audio stems in the browser
+- Local individual-stem replacement for vocals, drums, bass, guitar, keyboards, percussion, synth, FX, and other stems with synchronized-duration validation
+- Two switchable real-audio demo projects: five-stem electronic and nine-stem vocal J-rock arrangements
 - Source-derived waveform peak envelopes rendered with Canvas
 - Tone.js transport, playback, track mute, gain, BPM, and moving playhead
 - Non-destructive section rescheduling that produces an audible multitrack rearrangement
@@ -183,7 +185,7 @@ Codex helped:
 - turn the original concept into a scoped PRD and architecture;
 - compare the product against generative music tools and DAWs;
 - design and iterate the Suno-inspired visual editor;
-- import and analyze real stems and generate accurate waveform envelopes;
+- import and analyze two real stem sets and generate accurate waveform envelopes;
 - add a private, browser-only import workflow for complete songs and synchronized stems;
 - implement the transaction domain, Music Diff, ghost preview, API route, validation, and history;
 - diagnose UI and interaction bugs from screenshots;

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import * as Tone from "tone";
 import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
@@ -15,30 +16,9 @@ import { connectRealtimeConversation, type RealtimeConversationClient, type Real
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
 import { analyzeDecodedAudio, createFullMixProject, filenameTitle, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset } from "./local-audio-import";
+import { DEMO_PROJECTS, INITIAL_DEMO, type DemoProject, type DemoProjectId } from "./demo-projects";
 
-const INITIAL_PROJECT: Project = {
-  version: 1,
-  totalBars: 59,
-  bpm: 118,
-  sections: [
-    { id: "intro-1", kind: "intro", label: "Intro", sourceStartBar: 0, startBar: 0, lengthBars: 4, energy: 0.28 },
-    { id: "verse-1", kind: "verse", label: "Verse", sourceStartBar: 4, startBar: 4, lengthBars: 8, energy: 0.5 },
-    { id: "break-1", kind: "break", label: "Break", sourceStartBar: 12, startBar: 12, lengthBars: 4, energy: 0.3 },
-    { id: "chorus-1", kind: "chorus", label: "Chorus", sourceStartBar: 16, startBar: 16, lengthBars: 12, energy: 0.82 },
-    { id: "break-2", kind: "break", label: "Break 2", sourceStartBar: 28, startBar: 28, lengthBars: 2, energy: 0.26 },
-    { id: "verse-2", kind: "verse", label: "Verse 2", sourceStartBar: 30, startBar: 30, lengthBars: 7, energy: 0.56 },
-    { id: "build-1", kind: "verse", label: "Build", sourceStartBar: 37, startBar: 37, lengthBars: 7, energy: 0.72 },
-    { id: "chorus-2", kind: "chorus", label: "Final Chorus", sourceStartBar: 44, startBar: 44, lengthBars: 9, energy: 0.94 },
-    { id: "outro-1", kind: "outro", label: "Outro", sourceStartBar: 53, startBar: 53, lengthBars: 6, energy: 0.38 },
-  ],
-  tracks: [
-    { id: "drums", label: "DRUMS", role: "Suno stem · WAV", color: "#ff7a5c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/drums.mp3", peaksUrl: "/audio/neon-pulse-loop/drums-peaks.json", meanDb: -21.6, maxDb: -4.1 },
-    { id: "percussion", label: "PERCUSSION", role: "Suno stem · WAV", color: "#f5c84c", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/percussion.mp3", peaksUrl: "/audio/neon-pulse-loop/percussion-peaks.json", meanDb: -37.3, maxDb: -2.8 },
-    { id: "bass", label: "BASS", role: "Suno stem · WAV + MIDI", color: "#9d83ff", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/bass.mp3", peaksUrl: "/audio/neon-pulse-loop/bass-peaks.json", meanDb: -20.5, maxDb: -7 },
-    { id: "synth", label: "SYNTH", role: "Suno stem · WAV + MIDI", color: "#4ed6a7", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/synth.mp3", peaksUrl: "/audio/neon-pulse-loop/synth-peaks.json", meanDb: -25.6, maxDb: -4.9 },
-    { id: "fx", label: "FX", role: "Suno stem · WAV", color: "#f06eb6", enabled: true, level: 1, audioUrl: "/audio/neon-pulse-loop/fx.mp3", peaksUrl: "/audio/neon-pulse-loop/fx-peaks.json", meanDb: -106.2, maxDb: -54.9, nearSilent: true },
-  ],
-};
+const INITIAL_PROJECT = INITIAL_DEMO.project;
 
 const BAR_PX = 58;
 
@@ -50,12 +30,27 @@ function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
   if (action === "audition_proposed") return { action: "audition_proposed" };
   return null;
 }
-const DEMO_AUDIO_DURATION = 119.4;
-const FEATURED_DEMO_COMMAND = "Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.";
+const DEMO_AUDIO_DURATION = INITIAL_DEMO.duration;
+const FEATURED_DEMO_COMMAND = INITIAL_DEMO.featuredCommand;
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
 
-function CoverArt({ mini = false }: { mini?: boolean }) {
-  return <div className={`cover-art${mini ? " mini-cover" : ""}`} aria-hidden="true" />;
+function CoverArt({ coverUrl, mini = false }: { coverUrl: string; mini?: boolean }) {
+  return <div className={`cover-art${mini ? " mini-cover" : ""}`} style={{ "--cover-art": `url("${coverUrl}")` } as React.CSSProperties} aria-hidden="true" />;
+}
+
+function TrackIcon({ trackId }: { trackId: TrackId }) {
+  const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (trackId === "lead_vocals") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><rect x="8" y="3" width="8" height="12" rx="4" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8.5 21h7" /></svg>;
+  if (trackId === "backing_vocals") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><circle cx="8" cy="8" r="3" /><circle cx="16.5" cy="9" r="2.5" /><path d="M2.5 20c.5-4 2.3-6 5.5-6s5 2 5.5 6M13 15c3.9-.9 7.2.9 8.5 4.5" /></svg>;
+  if (trackId === "drums") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><ellipse cx="12" cy="7" rx="7" ry="3" /><path d="M5 7v8c0 1.7 3.1 3 7 3s7-1.3 7-3V7M5 11c0 1.7 3.1 3 7 3s7-1.3 7-3M8 4.8 5.5 2.5M16 4.8l2.5-2.3" /></svg>;
+  if (trackId === "percussion") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="m7.2 4.1 3.4 3.4-3.2 3.2L4 7.3a2.3 2.3 0 0 1 3.2-3.2ZM9 9l8.6 8.6M14.8 15l2.9-2.9M17.6 17.6l1.7 1.7M14.2 5.2h4.6M16.5 2.9v4.6" /></svg>;
+  if (trackId === "bass") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="M15.8 3.2 21 2l-1.2 5.2-8.3 8.3M16.8 6.2l1 1M8.7 12.4c-2.2-.5-4.5.4-5.7 2.3-1.2 2-.9 4.5.8 6.2 1.7 1.7 4.2 2 6.2.8 1.9-1.2 2.8-3.5 2.3-5.7M7.5 16.5a1.4 1.4 0 1 0 0 2.8 1.4 1.4 0 0 0 0-2.8Z" /></svg>;
+  if (trackId === "guitar") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="m16 3 5-1-1 5-8.8 8.8M17 6l1 1M9 12.5c-2.3-.6-4.7.3-6 2.3a5.6 5.6 0 0 0 .8 6.4c1.8 1.7 4.4 1.9 6.4.6 1.9-1.3 2.8-3.7 2.2-5.9M7 16.5l2 2" /></svg>;
+  if (trackId === "keyboards") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M6 9h12M7 9v6M10 9v4M13 9v6M16 9v4M19 9v6" /></svg>;
+  if (trackId === "synth") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M6 8h5M15 8h3M6 12c1.5-3 3 3 4.5 0s3 3 4.5 0 2 1 3 0M7 17h10" /></svg>;
+  if (trackId === "fx") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="m12 2 1.4 4.1L17.5 7.5l-4.1 1.4L12 13l-1.4-4.1-4.1-1.4 4.1-1.4L12 2ZM18.5 13l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2ZM6 14l1 2.9 2.9 1L7 19l-1 2.9L5 19l-2.9-1L5 16.9 6 14Z" /></svg>;
+  if (trackId === "other") return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="m12 3 8 4-8 4-8-4 8-4ZM4 12l8 4 8-4M4 17l8 4 8-4" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true" {...common}><path d="M3 13v-2M7 16V8M11 19V5M15 16V8M19 13v-2M3 5h18v14H3z" /></svg>;
 }
 
 function sectionAt(project: Project, bar: number) {
@@ -239,7 +234,10 @@ function MasterWaveform({ project, position, audioDuration, auditioning, cueBar,
 export function VoiceRemixStudio() {
   const [project, setProject] = useState<Project>(INITIAL_PROJECT);
   const projectRef = useRef(project);
-  const [projectTitle, setProjectTitle] = useState("Neon Pulse Loop");
+  const [activeDemoId, setActiveDemoId] = useState<DemoProjectId | null>(INITIAL_DEMO.id);
+  const [projectTitle, setProjectTitle] = useState(INITIAL_DEMO.title);
+  const [projectGenre, setProjectGenre] = useState(INITIAL_DEMO.genre);
+  const [projectCoverUrl, setProjectCoverUrl] = useState(INITIAL_DEMO.coverUrl);
   const [audioDuration, setAudioDuration] = useState(DEMO_AUDIO_DURATION);
   const audioDurationRef = useRef(DEMO_AUDIO_DURATION);
   const [playing, setPlaying] = useState(false);
@@ -1044,6 +1042,27 @@ export function VoiceRemixStudio() {
     setImportOpen(false);
   };
 
+  const loadDemoProject = (demo: DemoProject) => {
+    releaseAllImportedAudio();
+    const nextProject = cloneProject(demo.project);
+    prepareImportedProject(
+      nextProject,
+      demo.duration,
+      demo.title,
+      `${formatOverviewTime(demo.duration)} · ${nextProject.totalBars} bars · ${nextProject.tracks.length} real stems`,
+      "Demo project loaded",
+    );
+    setActiveDemoId(demo.id);
+    setProjectGenre(demo.genre);
+    setProjectCoverUrl(demo.coverUrl);
+    setImportBpm(nextProject.bpm);
+    setCommand(demo.featuredCommand);
+    setAssistantReply("");
+    setExportOpen(false);
+    setExportStatus("idle");
+    setJudgeStep(0);
+  };
+
   const importFullSong = async (file?: File) => {
     if (!file || importingAudio) return;
     setImportingAudio(true);
@@ -1055,6 +1074,9 @@ export function VoiceRemixStudio() {
       releaseAllImportedAudio();
       importedObjectUrls.current.mix = [asset.audioUrl, asset.peaksUrl];
       prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} estimated bars · master mix`);
+      setActiveDemoId(null);
+      setProjectGenre("Local audio · Estimated arrangement");
+      setProjectCoverUrl("/brand/voice-remix-icon.png");
     } catch (error) {
       if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
       setImportError(error instanceof Error ? error.message : "The song could not be imported.");
@@ -1080,6 +1102,7 @@ export function VoiceRemixStudio() {
       releaseImportedTrack(importTarget);
       importedObjectUrls.current[importTarget] = [asset.audioUrl, asset.peaksUrl];
       prepareImportedProject(nextProject, audioDurationRef.current, projectTitle, `${target.label} replaced with ${file.name}`);
+      setActiveDemoId(null);
     } catch (error) {
       if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
       setImportError(error instanceof Error ? error.message : "The stem could not be imported.");
@@ -1089,8 +1112,7 @@ export function VoiceRemixStudio() {
   };
 
   const startJudgeDemo = () => {
-    releaseAllImportedAudio();
-    prepareImportedProject(cloneProject(INITIAL_PROJECT), DEMO_AUDIO_DURATION, "Neon Pulse Loop", "Known-good arrangement restored · featured request ready", "Judge demo ready");
+    loadDemoProject(INITIAL_DEMO);
     setSelectedSection("chorus-2");
     setCommand(FEATURED_DEMO_COMMAND);
     setAssistantReply("");
@@ -1205,14 +1227,22 @@ export function VoiceRemixStudio() {
         </div>
       )}
       <nav className="sidebar" aria-label="Main navigation">
-        <div className="logo"><i>V</i><span>Voice Remix</span></div>
+        <div className="logo">
+          <Image src="/brand/voice-remix-icon.png" alt="" width={30} height={30} priority />
+          <span>Voice Remix</span>
+        </div>
         <div className="nav-group">
           <button className="nav-item active"><span>✦</span> Create</button>
           <button className="nav-item judge-nav" onClick={startJudgeDemo}><span>▶</span> Judge demo</button>
         </div>
         <div className="nav-group secondary">
           <small>WORKSPACE</small>
-          <button className="project-link"><i className="project-art" />{projectTitle}</button>
+          {DEMO_PROJECTS.map((demo) => (
+            <button className={`project-link ${activeDemoId === demo.id ? "active-project" : ""}`} type="button" onClick={() => loadDemoProject(demo)} key={demo.id} aria-pressed={activeDemoId === demo.id}>
+              <i className="project-art" style={{ "--project-art": `url("${demo.coverUrl}")` } as React.CSSProperties} />
+              <span>{demo.title}</span>
+            </button>
+          ))}
           <button className="project-link faded" onClick={openImport}><i className="add-project">＋</i>Import audio</button>
         </div>
         <div className="sidebar-bottom">
@@ -1327,11 +1357,11 @@ export function VoiceRemixStudio() {
           )}
 
           <section className="song-card">
-            <CoverArt />
+            <CoverArt coverUrl={projectCoverUrl} />
             <div className="song-info">
               <span className={`overline ${auditioningProposal ? "audition-label" : ""}`}>{auditioningProposal ? "AUDITIONING PROPOSED · NOT APPLIED" : "CURRENT ARRANGEMENT"}</span>
               <h2>{projectTitle}</h2>
-              <p>{project.tracks.length === 1 && project.tracks[0].id === "mix" ? "Local audio · Estimated arrangement" : "Alt-electronic · Neon pop · Instrumental"}</p>
+              <p>{projectGenre}</p>
               <div className="song-tags"><span>{project.bpm} BPM</span><span>{formatOverviewTime(audioDuration)}</span><span>{project.totalBars} bars</span><span>{project.tracks.length === 1 ? "1 master track" : `${project.tracks.length} stems`}</span></div>
             </div>
             <MasterWaveform project={audibleProject} position={position} audioDuration={audioDuration} auditioning={auditioningProposal} cueBar={liveQueue?.executeAtBar} onScrub={scrubToBar} />
@@ -1360,7 +1390,7 @@ export function VoiceRemixStudio() {
                   return (
                   <div className={`track-row ${audibleTrack.enabled ? "" : "is-muted"} ${auditionChanged ? "is-audition-changed" : ""}`} data-audition-state={auditioningProposal ? (audibleTrack.enabled ? "on" : "muted") : "current"} key={track.id}>
                     <div className="track-header">
-                      <span className="track-color" style={{ background: track.color }} />
+                      <span className="track-icon-wrap" data-track-icon={track.id} style={{ "--track-color": track.color } as React.CSSProperties}><TrackIcon trackId={track.id} /></span>
                       <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={auditionChanged ? "audition-note" : track.nearSilent ? "near-silent" : ""}>{auditionChanged ? (audibleTrack.enabled ? `Proposed · ${Math.round(audibleTrack.level * 100)}% gain` : "Proposed · muted") : track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
                       <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`} disabled={auditioningProposal}>{audibleTrack.enabled ? "M" : "○"}</button>
                     </div>
@@ -1409,7 +1439,7 @@ export function VoiceRemixStudio() {
         </div>
 
         <footer className="player-bar">
-          <div className="mini-song"><CoverArt mini /><div><strong>{projectTitle}</strong><span>{active?.label ?? "Ready"} · {project.tracks.length === 1 ? "Master mix" : "Imported stems"}</span></div></div>
+          <div className="mini-song"><CoverArt coverUrl={projectCoverUrl} mini /><div><strong>{projectTitle}</strong><span>{active?.label ?? "Ready"} · {project.tracks.length === 1 ? "Master mix" : "Imported stems"}</span></div></div>
           <div className="player-center"><div className="player-buttons"><button onClick={undo} disabled={!canUndo || audioSwitching} aria-label="Undo" title="Undo">↶</button><button className="footer-play" onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} disabled={audioSwitching}>{playing ? "Ⅱ" : "▶"}</button><button onClick={redo} disabled={!canRedo || audioSwitching} aria-label="Redo" title="Redo">↷</button></div><div className="progress-row"><span>{formatOverviewTime(position / project.totalBars * audioDuration)}</span><input className="progress-track" style={{ "--progress": `${position / project.totalBars * 100}%` } as React.CSSProperties} type="range" min="0" max={project.totalBars - 0.001} step="0.01" value={position} onInput={(event) => scrubToBar(Number(event.currentTarget.value))} onChange={(event) => scrubToBar(Number(event.currentTarget.value))} onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubFromPointer(event); }} onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubFromPointer(event); }} aria-label="Playback position" aria-valuetext={`Bar ${Math.floor(position) + 1}`} /><span>{formatOverviewTime(audioDuration)}</span></div></div>
           <div className="player-right"><label>BPM</label><strong>{project.bpm}</strong><span>◖)))</span></div>
         </footer>
