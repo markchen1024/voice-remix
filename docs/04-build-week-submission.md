@@ -44,12 +44,12 @@ The repository is public, includes an MIT License for source and documentation, 
 
 ## 2. One-minute judge path
 
-1. Open the deployed app and press Play.
-2. Mute and unmute a stem to verify that the demo uses synchronized audio tracks.
-3. Enter `Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged`.
+1. Open the deployed app and choose **Judge demo**.
+2. Use **Start music** to verify that the demo uses five synchronized audio stems.
+3. Use **Preview with GPT-5.6** for the prefilled featured request.
 4. Verify the `GPT-5.6-SOL` source, two proposed operations, and protected `BASS` track.
-5. Deselect the drum-gain operation, then apply only the section move.
-6. Press Undo and Redo.
+5. Use **Hear proposed**, deselect the drum-gain operation if desired, then apply the selected edit.
+6. Press Undo and Redo, then export the committed WAV.
 
 Expected result: the editor exposes a validated, selective, reversible change rather than treating the model response as an opaque one-shot action.
 
@@ -71,6 +71,7 @@ Use these facts to write the final description yourself.
 - Uses GPT-5.6 Sol to translate contextual requests into constrained music operations.
 - Shows a Music Diff, protected stems, before/after values, assumptions, and ghost timeline preview.
 - Lets the user accept only selected operations, discard the proposal, Undo, or Redo.
+- Includes a resumable one-minute Judge Mode that restores the known-good five-stem project and guides the real product workflow.
 - Downloads the committed audible arrangement as a stereo WAV, with project JSON available as a secondary snapshot.
 - Falls back to a smaller deterministic local planner when the API is unavailable.
 

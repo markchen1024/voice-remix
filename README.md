@@ -55,6 +55,7 @@ The canonical arrangement is never mutated while the Music Diff is only a propos
 - Automatic audition seek to one bar before the earliest affected section
 - Atomic Apply and Discard
 - Undo/Redo history with branch invalidation after a new edit
+- One-minute Judge Mode that restores the known-good arrangement and guides Play → GPT-5.6 Music Diff → A/B → Apply → Export
 - Browser-rendered stereo WAV export of the committed arrangement, including section moves, mutes, gain, and section energy
 - Versioned `.voice-remix.json` project export with source/destination section mapping
 - Deterministic local planner when the API is unavailable
@@ -222,6 +223,7 @@ The dated commit history beginning July 17 documents the Build Week implementati
 | Browser-local song and stem import | `0fec6c3` |
 | Offline WAV render engine | `6a654e4` |
 | Committed-arrangement WAV export | `852c89d` |
+| One-minute judge demo | `2165356` |
 
 ## Sample media and third-party disclosure
 

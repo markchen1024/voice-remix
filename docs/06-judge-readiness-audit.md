@@ -37,11 +37,11 @@ The differentiator is not merely connecting an LLM to editor controls. It is the
 | Criterion | Current | Evidence | Main deduction |
 |---|---:|---|---|
 | Technological Implementation | 8.5/10 | Realtime voice, GPT-5.6 Structured Outputs, deterministic validation, real multitrack scheduler, offline WAV renderer, 56 tests | Some PRD operations remain unimplemented |
-| Design | 7/10 | Polished editor, Music Diff, A/B, ghost timeline, live cue, finished WAV delivery | No public judge URL or guided first-run path |
+| Design | 8/10 | Polished editor, Music Diff, A/B, ghost timeline, live cue, one-minute judge path, finished WAV delivery | No public judge URL |
 | Potential Impact | 7.5/10 | Clear problem for taste-rich creators who do not use DAWs; import-to-edit-to-download loop now closes | Batch stem intake and persistence are still incomplete |
 | Quality of the Idea | 8.5/10 | “Git diff for music” plus voice and beat-synchronous execution is distinct | The submission must foreground this trust model rather than look like a thin AI editor wrapper |
 
-Estimated total: **31.5/40**. The concept and core loop are competitive; public access and first-run guidance are now the limiting factors.
+Estimated total: **32.5/40**. The concept and core loop are competitive; public access is now the largest remaining deduction.
 
 ## P0 — required before recording the final demo
 
@@ -60,9 +60,9 @@ Estimated total: **31.5/40**. The concept and core loop are competitive; public 
 
 ### 3. One-minute judge mode
 
-- A compact three-step coach mark: Play → use the featured request → inspect and apply the Diff.
-- A `Try the judge demo` action that restores the known-good arrangement and featured prompt.
-- Keep the normal editor available; do not turn the product into a slideshow.
+- [x] A compact three-step coach mark: Play → use the featured request → inspect and apply the Diff.
+- [x] A `Judge demo` action that restores the known-good arrangement and featured prompt.
+- [x] Keep the normal editor available; do not turn the product into a slideshow.
 
 ### 4. Product truth and state integrity
 
