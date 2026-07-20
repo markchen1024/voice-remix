@@ -17,6 +17,7 @@ import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
 import { analyzeDecodedAudioAsync, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset, type MappedStemAsset } from "./local-audio-import";
 import { DEMO_PROJECTS, INITIAL_DEMO, type DemoProject, type DemoProjectId } from "./demo-projects";
+import { trackWaveformRenderWidth } from "./waveform-rendering";
 
 const INITIAL_PROJECT = INITIAL_DEMO.project;
 
@@ -67,16 +68,16 @@ function TrackWaveform({ url, color, width, project, nearSilent = false }: { url
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    fetch(url)
-      .then((response) => response.json() as Promise<PeakEnvelope>)
+    loadPeakEnvelope(url)
       .then((data) => {
         if (cancelled) return;
         const height = 54;
+        const renderWidth = trackWaveformRenderWidth(width);
         const context = canvas.getContext("2d");
-        if (!context) return;
-        canvas.width = width;
+        if (!context || !data.peaks.length) return;
+        canvas.width = renderWidth;
         canvas.height = height;
-        context.clearRect(0, 0, width, height);
+        context.clearRect(0, 0, renderWidth, height);
         context.strokeStyle = color;
         context.lineWidth = 1;
         context.globalAlpha = nearSilent ? 0.32 : 0.86;
@@ -84,11 +85,11 @@ function TrackWaveform({ url, color, width, project, nearSilent = false }: { url
         const visualScale = (value: number) => Math.sign(value) * Math.log1p(Math.abs(value) * 20) / Math.log(21);
 
         for (const section of project.sections) {
-          const destinationStart = Math.round(section.startBar / project.totalBars * width);
-          const destinationEnd = Math.round((section.startBar + section.lengthBars) / project.totalBars * width);
+          const destinationStart = Math.round(section.startBar / project.totalBars * renderWidth);
+          const destinationEnd = Math.round((section.startBar + section.lengthBars) / project.totalBars * renderWidth);
           const sourceStart = sourceStartBar(section);
           context.beginPath();
-          for (let x = Math.max(0, destinationStart); x < Math.min(width, destinationEnd); x += 1) {
+          for (let x = Math.max(0, destinationStart); x < Math.min(renderWidth, destinationEnd); x += 1) {
             const sectionProgress = (x - destinationStart) / Math.max(1, destinationEnd - destinationStart);
             const sourceBar = sourceStart + sectionProgress * section.lengthBars;
             const peak = data.peaks[Math.min(data.peaks.length - 1, Math.max(0, Math.floor(sourceBar / project.totalBars * data.peaks.length)))];
