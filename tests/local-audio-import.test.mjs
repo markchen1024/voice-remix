@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeDecodedAudio, createFullMixProject, createStemProject, detectAudioSections, filenameTitle, mapStemFilenames, matchStemTrackId, projectBarsForDuration, replaceProjectStem, validateMappedStemAssets } from "../app/local-audio-import.ts";
+import { analyzeAudioStructure, analyzeDecodedAudio, createFullMixProject, createStemProject, detectAudioSections, filenameTitle, mapStemFilenames, matchStemTrackId, projectBarsForDuration, replaceProjectStem, validateMappedStemAssets } from "../app/local-audio-import.ts";
 
 const asset = {
   audioUrl: "blob:audio",
@@ -68,6 +68,33 @@ test("real per-bar energy changes produce evidence-based neutral sections", () =
 
   const sections = detectAudioSections(totalBars, analysis.structure);
   assert.deepEqual(sections.map((section) => section.startBar), [0, 8, 20, 32]);
+  assert.equal(sections[0].label, "Opening");
+  assert.equal(sections.at(-1).label, "Outro");
+  assert.equal(sections.some((section) => /verse|chorus/i.test(section.label)), false);
+  assert.equal(sections.at(-1).startBar + sections.at(-1).lengthBars, totalBars);
+});
+
+test("Meyda adds harmonic and timbre evidence without inventing vocal section names", () => {
+  const bpm = 120;
+  const totalBars = 16;
+  const sampleRate = 4096;
+  const duration = totalBars * 240 / bpm;
+  const samples = new Float32Array(duration * sampleRate);
+  for (let index = 0; index < samples.length; index += 1) {
+    const bar = Math.min(totalBars - 1, Math.floor(index / samples.length * totalBars));
+    const frequency = bar < 4 ? 110 : bar < 12 ? 220 : 330;
+    const amplitude = bar < 4 ? 0.05 : bar < 12 ? 0.55 : 0.12;
+    samples[index] = Math.sin(index / sampleRate * Math.PI * 2 * frequency) * amplitude;
+  }
+  const decoded = { duration, numberOfChannels: 1, sampleRate, getChannelData: () => samples };
+  const evidence = analyzeAudioStructure(decoded, bpm);
+  assert.equal(evidence.method, "meyda-bar-features");
+  assert.equal(evidence.bars.length, totalBars);
+  assert.equal(evidence.bars[0].chroma.length, 12);
+  assert.equal(evidence.bars[0].timbre.length, 6);
+  assert.ok(evidence.confidence >= 0.45);
+
+  const sections = detectAudioSections(totalBars, evidence);
   assert.equal(sections[0].label, "Opening");
   assert.equal(sections.at(-1).label, "Outro");
   assert.equal(sections.some((section) => /verse|chorus/i.test(section.label)), false);

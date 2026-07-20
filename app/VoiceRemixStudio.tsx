@@ -15,7 +15,7 @@ import { mergeProposalRefinement } from "./proposal-refinement";
 import { connectRealtimeConversation, type RealtimeConversationClient, type RealtimeToolCall } from "./realtime-transcription";
 import { buildMasterWaveform, type PeakBank, type PeakEnvelope } from "./master-waveform";
 import { createLiveCommandQueue, crossedQuantizedBar, forwardBarDistance, type LiveCommandQueue } from "./live-command-queue";
-import { analyzeDecodedAudio, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset, type MappedStemAsset } from "./local-audio-import";
+import { analyzeDecodedAudioAsync, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, replaceProjectStem, REPLACEABLE_STEM_IDS, type LocalAudioAsset, type MappedStemAsset } from "./local-audio-import";
 import { DEMO_PROJECTS, INITIAL_DEMO, type DemoProject, type DemoProjectId } from "./demo-projects";
 
 const INITIAL_PROJECT = INITIAL_DEMO.project;
@@ -1043,7 +1043,7 @@ export function VoiceRemixStudio() {
     try {
       const decoded = await decodingContext.decodeAudioData(await file.arrayBuffer());
       if (!Number.isFinite(decoded.duration) || decoded.duration <= 0) throw new Error("The audio file has no playable duration.");
-      const analysis = analyzeDecodedAudio(decoded, 2048, bpm);
+      const analysis = await analyzeDecodedAudioAsync(decoded, 2048, bpm);
       const audioUrl = URL.createObjectURL(file);
       const peaksUrl = URL.createObjectURL(new Blob([JSON.stringify(analysis.envelope)], { type: "application/json" }));
       return { audioUrl, peaksUrl, duration: analysis.duration, filename: file.name, meanDb: analysis.meanDb, maxDb: analysis.maxDb, nearSilent: analysis.nearSilent, structure: analysis.structure };
@@ -1104,11 +1104,13 @@ export function VoiceRemixStudio() {
     try {
       asset = await decodeLocalAudio(file);
       const nextProject = createFullMixProject(projectRef.current, asset, importBpm);
+      const usesMeyda = asset.structure?.method === "meyda-bar-features";
+      const structureConfidence = Math.round((asset.structure?.confidence ?? 0) * 100);
       releaseAllImportedAudio();
       importedObjectUrls.current.mix = [asset.audioUrl, asset.peaksUrl];
-      prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · master mix`);
+      prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · ${structureConfidence}% confidence · master mix`);
       setActiveDemoId(null);
-      setProjectGenre("Local audio · Browser-analyzed structure");
+      setProjectGenre(`Local audio · ${usesMeyda ? "Meyda spectral structure" : "Lightweight browser structure"}`);
       setProjectCoverUrl("/brand/voice-remix-icon.png");
     } catch (error) {
       if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
@@ -1158,6 +1160,9 @@ export function VoiceRemixStudio() {
       }
       const nextProject = createStemProject(projectRef.current, decodedStems, importBpm);
       const duration = decodedStems[0].asset.duration;
+      const structures = decodedStems.map(({ asset }) => asset.structure).filter((structure) => structure);
+      const structureConfidence = structures.length ? Math.round(structures.reduce((sum, structure) => sum + structure!.confidence, 0) / structures.length * 100) : 0;
+      const usesMeyda = structures.length > 0 && structures.every((structure) => structure?.method === "meyda-bar-features");
       releaseAllImportedAudio();
       decodedStems.forEach(({ trackId, asset }) => {
         importedObjectUrls.current[trackId] = [asset.audioUrl, asset.peaksUrl];
@@ -1166,11 +1171,11 @@ export function VoiceRemixStudio() {
         nextProject,
         duration,
         batchProjectTitle.trim() || "Imported Stem Project",
-        `${formatOverviewTime(duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · ${nextProject.tracks.length} synchronized stems`,
+        `${formatOverviewTime(duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · ${structureConfidence}% confidence · ${nextProject.tracks.length} synchronized stems`,
         "Stem project imported",
       );
       setActiveDemoId(null);
-      setProjectGenre("Local multitrack · Browser-analyzed structure");
+      setProjectGenre(`Local multitrack · ${usesMeyda ? "Meyda spectral structure" : "Lightweight browser structure"}`);
       setProjectCoverUrl("/brand/voice-remix-icon.png");
       setImportTarget(nextProject.tracks[0].id);
       setBatchStemFiles([]);
@@ -1274,7 +1279,7 @@ export function VoiceRemixStudio() {
               <button type="button" onClick={() => setImportOpen(false)} disabled={importingAudio} aria-label="Close audio import">×</button>
             </div>
             <label className="import-bpm">
-              <span><strong>Song tempo</strong><small>Used to align the ruler and analyze per-bar structure in the browser.</small></span>
+              <span><strong>Song tempo</strong><small>Used to align the ruler and analyze per-bar harmony, timbre, and transitions in the browser.</small></span>
               <span><input type="number" min="40" max="240" value={importBpm} disabled={importingAudio} onChange={(event) => setImportBpm(Math.max(40, Math.min(240, Number(event.target.value) || project.bpm)))} aria-label="Imported song tempo" /> BPM</span>
             </label>
             <div className="import-options">

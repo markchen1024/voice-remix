@@ -1,5 +1,6 @@
 import type { PeakEnvelope } from "./master-waveform.ts";
 import { cloneProject, type Project, type Section, type Track, type TrackId } from "./edit-transactions.ts";
+import { analyzeMeydaFrameSet, type MeydaFrameSet } from "./meyda-structure-analysis.ts";
 
 export const REPLACEABLE_STEM_IDS = ["lead_vocals", "backing_vocals", "drums", "percussion", "bass", "guitar", "keyboards", "synth", "fx", "other"] as const satisfies readonly TrackId[];
 export type ReplaceableStemId = typeof REPLACEABLE_STEM_IDS[number];
@@ -56,14 +57,16 @@ export type AudioAnalysis = Pick<LocalAudioAsset, "duration" | "maxDb" | "meanDb
 
 export type AudioBarFeature = {
   brightness: number;
+  chroma?: number[];
   density: number;
   energy: number;
+  timbre?: number[];
 };
 
 export type AudioStructureEvidence = {
   bars: AudioBarFeature[];
   confidence: number;
-  method: "browser-bar-features";
+  method: "browser-bar-features" | "meyda-bar-features";
 };
 
 function amplitudeToDb(amplitude: number) {
@@ -79,7 +82,7 @@ function normalized(values: number[]) {
   return values.map((value) => Math.max(0, Math.min(1, (value - low) / range)));
 }
 
-export function analyzeAudioStructure(audio: DecodedAudioLike, bpm: number): AudioStructureEvidence {
+function analyzeLegacyAudioStructure(audio: DecodedAudioLike, bpm: number): AudioStructureEvidence {
   const totalBars = projectBarsForDuration(audio.duration, bpm);
   const channels = Array.from({ length: Math.max(1, audio.numberOfChannels) }, (_, channel) => audio.getChannelData(channel));
   const sampleCount = Math.max(1, channels[0]?.length ?? 0);
@@ -126,6 +129,77 @@ export function analyzeAudioStructure(audio: DecodedAudioLike, bpm: number): Aud
   };
 }
 
+function prepareMeydaFrameSet(audio: DecodedAudioLike, bpm: number): MeydaFrameSet | null {
+  const totalBars = projectBarsForDuration(audio.duration, bpm);
+  const channels = Array.from({ length: Math.max(1, audio.numberOfChannels) }, (_, channel) => audio.getChannelData(channel));
+  const sampleCount = Math.max(1, channels[0]?.length ?? 0);
+  const frameSize = 2048;
+  const framesPerBar = 6;
+  const samplesPerBar = sampleCount / totalBars;
+  if (samplesPerBar < frameSize || sampleCount < frameSize) return null;
+
+  const frames = new Float32Array(totalBars * framesPerBar * frameSize);
+  for (let bar = 0; bar < totalBars; bar += 1) {
+    const barStart = bar / totalBars * sampleCount;
+    const barEnd = (bar + 1) / totalBars * sampleCount;
+    for (let frameIndex = 0; frameIndex < framesPerBar; frameIndex += 1) {
+      const center = barStart + (frameIndex + 0.5) / framesPerBar * (barEnd - barStart);
+      const sourceStart = Math.max(0, Math.min(sampleCount - frameSize, Math.round(center - frameSize / 2)));
+      const targetStart = (bar * framesPerBar + frameIndex) * frameSize;
+      for (let sample = 0; sample < frameSize; sample += 1) {
+        let mixed = 0;
+        for (const channel of channels) mixed += channel[sourceStart + sample] ?? 0;
+        frames[targetStart + sample] = mixed / channels.length;
+      }
+    }
+  }
+  return { frameSize, frames, framesPerBar, sampleRate: audio.sampleRate, totalBars };
+}
+
+export function analyzeAudioStructure(audio: DecodedAudioLike, bpm: number): AudioStructureEvidence {
+  const input = prepareMeydaFrameSet(audio, bpm);
+  if (!input) return analyzeLegacyAudioStructure(audio, bpm);
+  try {
+    return analyzeMeydaFrameSet(input);
+  } catch (error) {
+    console.warn("Meyda analysis failed; using lightweight browser features", error);
+    return analyzeLegacyAudioStructure(audio, bpm);
+  }
+}
+
+export async function analyzeAudioStructureAsync(audio: DecodedAudioLike, bpm: number): Promise<AudioStructureEvidence> {
+  const input = prepareMeydaFrameSet(audio, bpm);
+  if (!input || typeof Worker === "undefined") return analyzeAudioStructure(audio, bpm);
+  const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+  const worker = new Worker(new URL("./audio-structure.worker.ts", import.meta.url), { type: "module" });
+  return new Promise((resolve) => {
+    let settled = false;
+    const fallback = () => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      resolve(analyzeLegacyAudioStructure(audio, bpm));
+    };
+    const timeout = globalThis.setTimeout(fallback, 20_000);
+    worker.onmessage = (event: MessageEvent<{ error?: string; id: string; result?: AudioStructureEvidence }>) => {
+      if (event.data.id !== id || settled) return;
+      globalThis.clearTimeout(timeout);
+      if (!event.data.result) {
+        fallback();
+        return;
+      }
+      settled = true;
+      worker.terminate();
+      resolve(event.data.result);
+    };
+    worker.onerror = () => {
+      globalThis.clearTimeout(timeout);
+      fallback();
+    };
+    worker.postMessage({ id, input }, [input.frames.buffer]);
+  });
+}
+
 export function analyzeDecodedAudio(audio: DecodedAudioLike, binCount = 2048, bpm?: number): AudioAnalysis {
   const bins = Math.max(1, Math.floor(binCount));
   const channels = Array.from({ length: Math.max(1, audio.numberOfChannels) }, (_, channel) => audio.getChannelData(channel));
@@ -166,6 +240,11 @@ export function analyzeDecodedAudio(audio: DecodedAudioLike, binCount = 2048, bp
   };
 }
 
+export async function analyzeDecodedAudioAsync(audio: DecodedAudioLike, binCount = 2048, bpm?: number): Promise<AudioAnalysis> {
+  const analysis = analyzeDecodedAudio(audio, binCount);
+  return { ...analysis, structure: bpm ? await analyzeAudioStructureAsync(audio, bpm) : undefined };
+}
+
 export function projectBarsForDuration(duration: number, bpm: number) {
   return Math.max(8, Math.round(Math.max(0, duration) * Math.max(1, bpm) / 240));
 }
@@ -173,17 +252,38 @@ export function projectBarsForDuration(duration: number, bpm: number) {
 function meanFeature(bars: AudioBarFeature[], start: number, end: number): AudioBarFeature {
   const selected = bars.slice(Math.max(0, start), Math.max(start + 1, end));
   const divisor = Math.max(1, selected.length);
-  return selected.reduce((result, bar) => ({
+  const vectorMean = (key: "chroma" | "timbre") => {
+    const width = Math.max(0, ...selected.map((bar) => bar[key]?.length ?? 0));
+    return width ? Array.from({ length: width }, (_, index) => selected.reduce((sum, bar) => sum + (bar[key]?.[index] ?? 0), 0) / divisor) : undefined;
+  };
+  const scalar = selected.reduce((result, bar) => ({
     energy: result.energy + bar.energy / divisor,
     density: result.density + bar.density / divisor,
     brightness: result.brightness + bar.brightness / divisor,
   }), { energy: 0, density: 0, brightness: 0 });
+  return { ...scalar, chroma: vectorMean("chroma"), timbre: vectorMean("timbre") };
+}
+
+function vectorDistance(left?: number[], right?: number[]) {
+  if (!left?.length || !right?.length) return 0;
+  const length = Math.min(left.length, right.length);
+  let distance = 0;
+  for (let index = 0; index < length; index += 1) distance += Math.abs(left[index] - right[index]);
+  return distance / length;
 }
 
 function featureDistance(left: AudioBarFeature, right: AudioBarFeature) {
-  return Math.abs(left.energy - right.energy) * 0.55
-    + Math.abs(left.density - right.density) * 0.3
-    + Math.abs(left.brightness - right.brightness) * 0.15;
+  const hasMeydaFeatures = Boolean(left.chroma?.length && right.chroma?.length && left.timbre?.length && right.timbre?.length);
+  if (!hasMeydaFeatures) {
+    return Math.abs(left.energy - right.energy) * 0.55
+      + Math.abs(left.density - right.density) * 0.3
+      + Math.abs(left.brightness - right.brightness) * 0.15;
+  }
+  return Math.abs(left.energy - right.energy) * 0.32
+    + Math.abs(left.density - right.density) * 0.18
+    + Math.abs(left.brightness - right.brightness) * 0.08
+    + vectorDistance(left.chroma, right.chroma) * 0.17
+    + vectorDistance(left.timbre, right.timbre) * 0.25;
 }
 
 function segmentSignature(bars: AudioBarFeature[], start: number, end: number) {
@@ -192,7 +292,7 @@ function segmentSignature(bars: AudioBarFeature[], start: number, end: number) {
     const partStart = Math.floor(start + (end - start) * index / parts);
     const partEnd = Math.max(partStart + 1, Math.floor(start + (end - start) * (index + 1) / parts));
     const feature = meanFeature(bars, partStart, partEnd);
-    return [feature.energy, feature.density, feature.brightness];
+    return [feature.energy, feature.density, feature.brightness, ...(feature.chroma ?? []), ...(feature.timbre ?? [])];
   }).flat();
 }
 
@@ -226,14 +326,15 @@ function neutralFallbackSections(totalBars: number): Section[] {
 export function detectAudioSections(totalBars: number, evidence?: AudioStructureEvidence): Section[] {
   if (!evidence || evidence.bars.length !== totalBars || totalBars < 12) return neutralFallbackSections(totalBars);
   const bars = evidence.bars;
-  const phrase = totalBars >= 32 ? 4 : 2;
-  const minimumLength = Math.min(4, phrase);
-  const targetSections = Math.max(4, Math.min(9, Math.round(totalBars / 11)));
+  const comparisonWindow = totalBars >= 32 ? 4 : 2;
+  const candidateStep = 2;
+  const minimumLength = 2;
+  const targetSections = Math.max(4, Math.min(12, Math.round(totalBars / 7)));
   const candidates: { bar: number; score: number }[] = [];
 
-  for (let bar = phrase; bar <= totalBars - phrase; bar += phrase) {
-    const before = meanFeature(bars, bar - phrase, bar);
-    const after = meanFeature(bars, bar, bar + phrase);
+  for (let bar = comparisonWindow; bar <= totalBars - comparisonWindow; bar += candidateStep) {
+    const before = meanFeature(bars, bar - comparisonWindow, bar);
+    const after = meanFeature(bars, bar, bar + comparisonWindow);
     const immediate = featureDistance(bars[bar - 1], bars[bar]);
     candidates.push({ bar, score: featureDistance(before, after) * 0.75 + immediate * 0.25 });
   }
@@ -251,22 +352,37 @@ export function detectAudioSections(totalBars: number, evidence?: AudioStructure
     const end = boundaries[index + 1];
     if (end - start <= maxLength) continue;
     const options = candidates.filter((candidate) => candidate.bar - start >= minimumLength && end - candidate.bar >= minimumLength);
-    const midpoint = Math.round(((start + end) / 2) / phrase) * phrase;
+    const midpoint = Math.round(((start + end) / 2) / candidateStep) * candidateStep;
     const split = options.sort((left, right) => Math.abs(left.bar - midpoint) - Math.abs(right.bar - midpoint) || right.score - left.score)[0]?.bar ?? midpoint;
     boundaries.push(split);
     boundaries.sort((left, right) => left - right);
     index = -1;
   }
 
-  const segments = boundaries.slice(0, -1).map((startBar, index) => {
-    const endBar = boundaries[index + 1];
+  const buildSegment = (startBar: number, endBar: number) => {
     const feature = meanFeature(bars, startBar, endBar);
     const early = meanFeature(bars, startBar, Math.min(endBar, startBar + Math.max(1, Math.floor((endBar - startBar) / 3))));
     const late = meanFeature(bars, Math.max(startBar, endBar - Math.max(1, Math.floor((endBar - startBar) / 3))), endBar);
     return { startBar, endBar, feature, signature: segmentSignature(bars, startBar, endBar), trend: late.energy - early.energy };
-  });
+  };
+  const segments = boundaries.slice(0, -1).map((startBar, index) => buildSegment(startBar, boundaries[index + 1]));
+  for (let index = 1; index < segments.length - 1; index += 1) {
+    const segment = segments[index];
+    const isQuietTransition = segment.feature.energy < 0.12 && segment.feature.density < 0.15;
+    if (segment.endBar - segment.startBar >= 4 || isQuietTransition) continue;
+    const previous = segments[index - 1];
+    const next = segments[index + 1];
+    if (featureDistance(segment.feature, next.feature) <= featureDistance(segment.feature, previous.feature)) {
+      segments.splice(index, 2, buildSegment(segment.startBar, next.endBar));
+    } else {
+      segments.splice(index - 1, 2, buildSegment(previous.startBar, segment.endBar));
+    }
+    index = Math.max(0, index - 2);
+  }
   const sortedEnergy = segments.map((segment) => segment.feature.energy).sort((left, right) => left - right);
   const medianEnergy = sortedEnergy[Math.floor(sortedEnergy.length / 2)] ?? 0.5;
+  const sortedDensity = segments.map((segment) => segment.feature.density).sort((left, right) => left - right);
+  const medianDensity = sortedDensity[Math.floor(sortedDensity.length / 2)] ?? 0.5;
   const themeSignatures: number[][] = [];
   const themeOccurrences: number[] = [];
 
@@ -279,7 +395,11 @@ export function detectAudioSections(totalBars: number, evidence?: AudioStructure
     } else if (index === segments.length - 1) {
       label = "Outro";
       kind = "outro";
-    } else if (segment.feature.energy < Math.max(0.22, medianEnergy - 0.28)) {
+    } else if (
+      segment.feature.energy < Math.max(0.22, medianEnergy - 0.28)
+      && segment.feature.density < Math.max(0.2, medianDensity - 0.15)
+      && (segment.endBar - segment.startBar <= 8 || (segment.feature.energy < 0.08 && segment.feature.density < 0.15))
+    ) {
       label = "Break";
       kind = "break";
     } else if (segment.trend > 0.2) {
@@ -318,14 +438,19 @@ function combinedStructure(stems: readonly MappedStemAsset[], totalBars: number)
     bars: Array.from({ length: totalBars }, (_, bar) => {
       const features = evidence.map((item) => item.bars[bar]);
       const divisor = features.length;
-      return features.reduce((result, feature) => ({
+      const vectorMean = (key: "chroma" | "timbre") => {
+        const width = Math.max(0, ...features.map((feature) => feature[key]?.length ?? 0));
+        return width ? Array.from({ length: width }, (_, index) => features.reduce((sum, feature) => sum + (feature[key]?.[index] ?? 0), 0) / divisor) : undefined;
+      };
+      const scalar = features.reduce((result, feature) => ({
         energy: result.energy + feature.energy / divisor,
         density: result.density + feature.density / divisor,
         brightness: result.brightness + feature.brightness / divisor,
       }), { energy: 0, density: 0, brightness: 0 });
+      return { ...scalar, chroma: vectorMean("chroma"), timbre: vectorMean("timbre") };
     }),
     confidence: evidence.reduce((sum, item) => sum + item.confidence, 0) / evidence.length,
-    method: "browser-bar-features",
+    method: evidence.every((item) => item.method === "meyda-bar-features") ? "meyda-bar-features" : "browser-bar-features",
   };
 }
 
