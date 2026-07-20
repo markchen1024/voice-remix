@@ -252,6 +252,7 @@ export function VoiceRemixStudio() {
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "recording" | "transcribing" | "responding">("idle");
   const [assistantReply, setAssistantReply] = useState("");
   const [audioSwitching, setAudioSwitching] = useState(false);
+  const [audioOutputState, setAudioOutputState] = useState<"running" | "suspended">("suspended");
   const [liveQueue, setLiveQueue] = useState<LiveCommandQueue | null>(null);
   const [selectedSection, setSelectedSection] = useState("chorus-1");
   const [canUndo, setCanUndo] = useState(false);
@@ -341,19 +342,45 @@ export function VoiceRemixStudio() {
     const transport = Tone.getTransport();
     transport.stop();
     transport.cancel();
-    Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
+    Object.values(players.current).flat().forEach((player) => {
+      try { player.unsync(); } catch { /* already detached */ }
+      try { player.stop(); } catch { /* already stopped */ }
+      player.dispose();
+    });
+    players.current = {};
     Object.values(buffers.current).forEach((buffer) => buffer.dispose());
     Object.values(importedObjectUrls.current).flatMap((urls) => urls ?? []).forEach((url) => URL.revokeObjectURL(url));
-    players.current = {};
     buffers.current = {};
+    Tone.getDestination().mute = true;
+    const rawContext = Tone.getContext().rawContext as AudioContext;
+    if (rawContext.state === "running") void rawContext.suspend();
     if (mediaRecorder.current?.state === "recording") mediaRecorder.current.stop();
     microphoneStream.current?.getTracks().forEach((track) => track.stop());
     realtimeConversation.current?.close();
   }, []);
 
   function disposeArrangementPlayers() {
-    Object.values(players.current).flat().forEach((player) => player.unsync().dispose());
+    Object.values(players.current).flat().forEach((player) => {
+      // Unsync first so stop() uses audio-context time rather than leaving a
+      // Transport event or currently playing source behind.
+      try { player.unsync(); } catch { /* already detached */ }
+      try { player.stop(); } catch { /* already stopped */ }
+      player.dispose();
+    });
     players.current = {};
+  }
+
+  async function suspendMusicOutput() {
+    Tone.getDestination().mute = true;
+    const rawContext = Tone.getContext().rawContext as AudioContext;
+    if (rawContext.state === "running") await rawContext.suspend();
+    setAudioOutputState("suspended");
+  }
+
+  async function resumeMusicOutput() {
+    await Tone.start();
+    Tone.getDestination().mute = false;
+    setAudioOutputState("running");
   }
 
   function applyMixerState(nextProject: Project) {
@@ -371,6 +398,7 @@ export function VoiceRemixStudio() {
     scheduledArrangement.current = "";
     audioSetup.current = null;
     setMixerStatus(EMPTY_MIXER_STATUS);
+    setAudioOutputState("suspended");
     Tone.setContext(new Tone.Context({ latencyHint: "playback" }), true);
   }
 
@@ -447,14 +475,18 @@ export function VoiceRemixStudio() {
     if (!playingRef.current) return;
     Tone.getTransport().pause();
     setPlaybackState(false);
+    void suspendMusicOutput();
   }
 
   function restorePlaybackAfterVoiceCapture() {
     const shouldResume = resumePlaybackAfterVoice.current;
     resumePlaybackAfterVoice.current = false;
     if (!shouldResume || playingRef.current) return;
-    Tone.getTransport().start("+0.03");
-    setPlaybackState(true);
+    void resumeMusicOutput().then(() => {
+      if (playingRef.current) return;
+      Tone.getTransport().start("+0.03");
+      setPlaybackState(true);
+    });
   }
 
   const setupAudio = async () => {
@@ -503,7 +535,7 @@ export function VoiceRemixStudio() {
     try {
       await setupAudio();
       if (transitionId !== audioTransition.current) return false;
-      await Tone.start();
+      await resumeMusicOutput();
       if (transitionId !== audioTransition.current) return false;
 
       const transport = Tone.getTransport();
@@ -512,6 +544,7 @@ export function VoiceRemixStudio() {
       applyMixerState(nextProject);
       if (options.seekBar !== undefined) seekToBar(options.seekBar);
 
+      Tone.getDestination().mute = !shouldPlay;
       if (shouldPlay) transport.start("+0.03");
       setPlaybackState(shouldPlay);
       return true;
@@ -532,11 +565,12 @@ export function VoiceRemixStudio() {
     try {
       await setupAudio();
       if (transitionId !== audioTransition.current) return;
-      await Tone.start();
+      await resumeMusicOutput();
       const transport = Tone.getTransport();
       if (transport.state === "started") {
         transport.pause();
         setPlaybackState(false);
+        await suspendMusicOutput();
       } else {
         transport.start();
         setPlaybackState(true);
@@ -1277,7 +1311,7 @@ export function VoiceRemixStudio() {
   const batchStemImportReady = recognizedBatchStemCount >= 2 && duplicateBatchStemCount === 0 && !importingAudio;
 
   return (
-    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
+    <main className="app-shell" data-audio-ready={mixerStatus.ready} data-audio-player-count={mixerStatus.playerCount} data-audio-muted-player-count={mixerStatus.mutedPlayerCount} data-audio-switching={audioSwitching} data-audio-context-state={audioOutputState} data-audition-version={auditioningProposal ? "proposed" : "current"} data-voice-state={voiceState} data-playback-position={position.toFixed(2)}>
       {importOpen && (
         <div className="import-backdrop" role="presentation">
           <section className="import-dialog" role="dialog" aria-modal="true" aria-labelledby="import-title">
