@@ -22,6 +22,7 @@ import { trackWaveformRenderWidth } from "./waveform-rendering";
 const INITIAL_PROJECT = INITIAL_DEMO.project;
 
 const BAR_PX = 58;
+const POSITION_REFRESH_MS = 50;
 
 function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
   if (action === "play" || action === "pause" || action === "undo" || action === "redo") return { action };
@@ -309,9 +310,11 @@ export function VoiceRemixStudio() {
 
   useEffect(() => {
     let frame = 0;
-    const update = () => {
+    let lastPositionRefresh = 0;
+    const update = (timestamp: number) => {
       const transport = Tone.getTransport();
-      if (transport.state === "started") {
+      if (transport.state === "started" && timestamp - lastPositionRefresh >= POSITION_REFRESH_MS) {
+        lastPositionRefresh = timestamp;
         const totalBars = projectRef.current.totalBars;
         const duration = audioDurationRef.current;
         const nextPosition = (transport.seconds / duration * totalBars) % totalBars;
@@ -461,9 +464,12 @@ export function VoiceRemixStudio() {
       const contextStarted = Tone.start();
       audioSetup.current = (async () => {
         await contextStarted;
-        const audioProject = projectRef.current;
-        const loadedBuffers = await Promise.all(audioProject.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
+        const loadingProject = projectRef.current;
+        const loadedBuffers = await Promise.all(loadingProject.tracks.map(async (track) => [track.id, await Tone.ToneAudioBuffer.fromUrl(track.audioUrl)] as const));
         loadedBuffers.forEach(([trackId, buffer]) => { buffers.current[trackId] = buffer; });
+        // Mixer edits can arrive while a large stem set is loading. Schedule the
+        // latest project state so the first audible frame already reflects them.
+        const audioProject = projectRef.current;
         const transport = Tone.getTransport();
         transport.loop = true;
         transport.loopEnd = audioDurationRef.current;
@@ -586,7 +592,7 @@ export function VoiceRemixStudio() {
   };
 
   const toggleTrack = (trackId: TrackId) => {
-    const next = cloneProject(project);
+    const next = cloneProject(projectRef.current);
     const track = next.tracks.find((item) => item.id === trackId)!;
     track.enabled = !track.enabled;
     commit(next, track.enabled ? `Unmuted ${track.label}` : `Muted ${track.label}`, "Manual track edit");
@@ -1515,7 +1521,12 @@ export function VoiceRemixStudio() {
                     <div className="track-header">
                       <span className="track-icon-wrap" data-track-icon={track.id} style={{ "--track-color": track.color } as React.CSSProperties}><TrackIcon trackId={track.id} /></span>
                       <div title={track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}><strong>{track.label}</strong><small className={auditionChanged ? "audition-note" : track.nearSilent ? "near-silent" : ""}>{auditionChanged ? (audibleTrack.enabled ? `Proposed · ${Math.round(audibleTrack.level * 100)}% gain` : "Proposed · muted") : track.nearSilent ? `Near silent · peak ${track.maxDb} dB` : `${track.role} · ${track.meanDb} dB`}</small></div>
-                      <button className="mute-button" onClick={() => toggleTrack(track.id)} aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`} disabled={auditioningProposal}>{audibleTrack.enabled ? "M" : "○"}</button>
+                      <button
+                        className="mute-button"
+                        onClick={() => toggleTrack(track.id)}
+                        aria-label={`${track.enabled ? "Mute" : "Unmute"} ${track.label}`}
+                        disabled={auditioningProposal || audioSwitching}
+                      >{audibleTrack.enabled ? "M" : "○"}</button>
                     </div>
                     <div className="track-lane" style={{ width: project.totalBars * BAR_PX }}>
                       {barLabels.map((bar) => <i className={bar % 4 === 1 ? "major-grid" : ""} key={bar} style={{ left: (bar - 1) * BAR_PX }} />)}
