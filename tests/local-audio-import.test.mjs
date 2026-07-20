@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { analyzeDecodedAudio, createFullMixProject, createStemProject, filenameTitle, mapStemFilenames, matchStemTrackId, projectBarsForDuration, replaceProjectStem, validateMappedStemAssets } from "../app/local-audio-import.ts";
+import { analyzeDecodedAudio, createFullMixProject, createStemProject, detectAudioSections, filenameTitle, mapStemFilenames, matchStemTrackId, projectBarsForDuration, replaceProjectStem, validateMappedStemAssets } from "../app/local-audio-import.ts";
 
 const asset = {
   audioUrl: "blob:audio",
@@ -47,6 +47,31 @@ test("full song imports become a single editable master mix", () => {
     assert.equal(section.startBar, previous.startBar + previous.lengthBars);
   });
   assert.equal(filenameTitle("My Song.wav"), "My Song");
+  assert.equal(imported.sections.some((section) => /verse|chorus/i.test(section.label)), false);
+});
+
+test("real per-bar energy changes produce evidence-based neutral sections", () => {
+  const bpm = 120;
+  const totalBars = 40;
+  const sampleRate = 100;
+  const duration = totalBars * 240 / bpm;
+  const samples = new Float32Array(duration * sampleRate);
+  const amplitudeForBar = (bar) => bar < 8 ? 0.08 : bar < 20 ? 0.35 : bar < 32 ? 0.8 : 0.12;
+  for (let index = 0; index < samples.length; index += 1) {
+    const bar = Math.min(totalBars - 1, Math.floor(index / samples.length * totalBars));
+    samples[index] = Math.sin(index / sampleRate * Math.PI * 10) * amplitudeForBar(bar);
+  }
+  const decoded = { duration, numberOfChannels: 1, sampleRate, getChannelData: () => samples };
+  const analysis = analyzeDecodedAudio(decoded, 128, bpm);
+  assert.equal(analysis.structure.bars.length, totalBars);
+  assert.ok(analysis.structure.confidence >= 0.35);
+
+  const sections = detectAudioSections(totalBars, analysis.structure);
+  assert.deepEqual(sections.map((section) => section.startBar), [0, 8, 20, 32]);
+  assert.equal(sections[0].label, "Opening");
+  assert.equal(sections.at(-1).label, "Outro");
+  assert.equal(sections.some((section) => /verse|chorus/i.test(section.label)), false);
+  assert.equal(sections.at(-1).startBar + sections.at(-1).lengthBars, totalBars);
 });
 
 test("stem replacement preserves the arrangement and other tracks", () => {

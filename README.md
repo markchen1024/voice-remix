@@ -23,7 +23,7 @@ The workspace includes two switchable, source-accurate arrangements: the five-st
 Enter or speak:
 
 ```text
-Move the final chorus 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.
+Move the final hook 4 bars earlier and make the drums 20% harder, but keep the bass unchanged.
 ```
 
 Voice Remix then:
@@ -142,7 +142,7 @@ npm run dev
 
 The API key remains server-side. Do not expose it through a `NEXT_PUBLIC_` variable or commit an `.env` file.
 
-Use **Import audio** in the header or sidebar to open local MP3, WAV, M4A, AAC, OGG, FLAC, or WebM files. A full song becomes a single master-mix project with estimated sections. An individual stem replaces the selected lane and must match the current arrangement duration. A complete synchronized export can be selected at once: Voice Remix maps recognizable filenames such as `Lead Vocals`, `Drums`, `Bass`, `Guitar`, and `Synth`, shows skipped or duplicate files, then verifies duration before creating the multitrack project. Decoding and waveform analysis happen locally in the browser; the audio is not uploaded or persisted after reload.
+Use **Import audio** in the header or sidebar to open local MP3, WAV, M4A, AAC, OGG, FLAC, or WebM files. A full song becomes a single master-mix project whose section boundaries are detected from normalized per-bar energy, density, brightness, and change novelty. Auto-detected sections use neutral structural names such as `Theme`, `Break`, `Build`, and `Climax` rather than claiming that an instrumental passage is a verse or chorus. An individual stem replaces the selected lane and must match the current arrangement duration. A complete synchronized export can be selected at once: Voice Remix maps recognizable filenames such as `Lead Vocals`, `Drums`, `Bass`, `Guitar`, and `Synth`, shows skipped or duplicate files, verifies duration, and combines evidence across the synchronized stems before creating the multitrack project. Decoding and structural analysis happen locally in the browser; the audio is not uploaded or persisted after reload.
 
 ## Judge test path
 
@@ -246,7 +246,7 @@ The source code and documentation are available under the [MIT License](LICENSE)
 
 ## Current limitations
 
-- Demo section boundaries are initialized metadata; full-song imports receive clearly labeled estimated sections rather than automatic musical segmentation.
+- Demo section boundaries remain curated metadata. Imported audio now receives evidence-based structural boundaries, but semantic labels are intentionally neutral and should still be treated as suggestions rather than ground truth.
 - Realtime voice requires WebRTC, microphone permission, and OpenAI API access; request-based transcription and text remain fallbacks.
 - The local fallback supports a smaller command set than GPT-5.6.
 - Imported audio is session-local and is not persisted after reload. Automatic stem separation and DAW project export remain post-submission work.

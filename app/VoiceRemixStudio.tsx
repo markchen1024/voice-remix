@@ -296,7 +296,7 @@ export function VoiceRemixStudio() {
   const audibleProject = auditioningProposal && proposedProject ? proposedProject : project;
   const batchStemMappings = useMemo(() => mapStemFilenames(batchStemFiles.map((file) => file.name)), [batchStemFiles]);
   const promptSuggestions = DEMO_PROJECTS.find((demo) => demo.id === activeDemoId)?.suggestions ?? [
-    "Mute the drums in the final chorus",
+    "Mute the drums in this section",
     "Make this section more energetic",
     "Keep only the named instruments",
   ];
@@ -1034,7 +1034,7 @@ export function VoiceRemixStudio() {
     (Object.keys(importedObjectUrls.current) as TrackId[]).forEach(releaseImportedTrack);
   };
 
-  const decodeLocalAudio = async (file: File): Promise<LocalAudioAsset> => {
+  const decodeLocalAudio = async (file: File, bpm = importBpm): Promise<LocalAudioAsset> => {
     const supportedExtension = /\.(aac|flac|m4a|mp3|ogg|wav|webm)$/i.test(file.name);
     if ((!file.type.startsWith("audio/") && !supportedExtension) || file.size === 0) throw new Error("Choose a valid MP3, WAV, M4A, AAC, OGG, FLAC, or WebM audio file.");
     if (file.size > 250 * 1024 * 1024) throw new Error("Audio files must be smaller than 250 MB.");
@@ -1043,10 +1043,10 @@ export function VoiceRemixStudio() {
     try {
       const decoded = await decodingContext.decodeAudioData(await file.arrayBuffer());
       if (!Number.isFinite(decoded.duration) || decoded.duration <= 0) throw new Error("The audio file has no playable duration.");
-      const analysis = analyzeDecodedAudio(decoded);
+      const analysis = analyzeDecodedAudio(decoded, 2048, bpm);
       const audioUrl = URL.createObjectURL(file);
       const peaksUrl = URL.createObjectURL(new Blob([JSON.stringify(analysis.envelope)], { type: "application/json" }));
-      return { audioUrl, peaksUrl, duration: analysis.duration, filename: file.name, meanDb: analysis.meanDb, maxDb: analysis.maxDb, nearSilent: analysis.nearSilent };
+      return { audioUrl, peaksUrl, duration: analysis.duration, filename: file.name, meanDb: analysis.meanDb, maxDb: analysis.maxDb, nearSilent: analysis.nearSilent, structure: analysis.structure };
     } finally {
       await decodingContext.close();
     }
@@ -1106,9 +1106,9 @@ export function VoiceRemixStudio() {
       const nextProject = createFullMixProject(projectRef.current, asset, importBpm);
       releaseAllImportedAudio();
       importedObjectUrls.current.mix = [asset.audioUrl, asset.peaksUrl];
-      prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} estimated bars · master mix`);
+      prepareImportedProject(nextProject, asset.duration, filenameTitle(file.name), `${formatOverviewTime(asset.duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · master mix`);
       setActiveDemoId(null);
-      setProjectGenre("Local audio · Estimated arrangement");
+      setProjectGenre("Local audio · Browser-analyzed structure");
       setProjectCoverUrl("/brand/voice-remix-icon.png");
     } catch (error) {
       if (asset) [asset.audioUrl, asset.peaksUrl].forEach((url) => URL.revokeObjectURL(url));
@@ -1166,11 +1166,11 @@ export function VoiceRemixStudio() {
         nextProject,
         duration,
         batchProjectTitle.trim() || "Imported Stem Project",
-        `${formatOverviewTime(duration)} · ${nextProject.totalBars} estimated bars · ${nextProject.tracks.length} synchronized stems`,
+        `${formatOverviewTime(duration)} · ${nextProject.totalBars} analyzed bars · ${nextProject.sections.length} detected sections · ${nextProject.tracks.length} synchronized stems`,
         "Stem project imported",
       );
       setActiveDemoId(null);
-      setProjectGenre("Local multitrack · Browser-only stems");
+      setProjectGenre("Local multitrack · Browser-analyzed structure");
       setProjectCoverUrl("/brand/voice-remix-icon.png");
       setImportTarget(nextProject.tracks[0].id);
       setBatchStemFiles([]);
@@ -1274,14 +1274,14 @@ export function VoiceRemixStudio() {
               <button type="button" onClick={() => setImportOpen(false)} disabled={importingAudio} aria-label="Close audio import">×</button>
             </div>
             <label className="import-bpm">
-              <span><strong>Song tempo</strong><small>Used to align the ruler and estimate section lengths for a full-song import.</small></span>
+              <span><strong>Song tempo</strong><small>Used to align the ruler and analyze per-bar structure in the browser.</small></span>
               <span><input type="number" min="40" max="240" value={importBpm} disabled={importingAudio} onChange={(event) => setImportBpm(Math.max(40, Math.min(240, Number(event.target.value) || project.bpm)))} aria-label="Imported song tempo" /> BPM</span>
             </label>
             <div className="import-options">
               <label className={`import-option ${importingAudio ? "disabled" : ""}`}>
                 <input type="file" accept="audio/*,.aac,.flac,.m4a,.mp3,.ogg,.wav,.webm" disabled={importingAudio} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importFullSong(file); }} />
                 <span className="import-icon">♪</span>
-                <span><strong>Import a full song</strong><small>Creates one MASTER MIX lane with estimated sections and a real waveform.</small></span>
+                <span><strong>Import a full song</strong><small>Detects structural changes from real per-bar audio features and creates one MASTER MIX lane.</small></span>
                 <i>{importingAudio ? "DECODING…" : "CHOOSE FILE"}</i>
               </label>
               <div className={`import-option stem-option ${!availableStemTargets.length || importingAudio ? "disabled" : ""}`}>

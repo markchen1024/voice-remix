@@ -20,6 +20,15 @@ test("demo catalog exposes two independent source-accurate projects", () => {
   }
 });
 
+test("instrumental demo uses structural labels instead of vocal song labels", () => {
+  const demo = demoProjectById("neon-pulse-loop");
+  assert.equal(demo.project.sections.some((section) => /verse|chorus/i.test(section.label)), false);
+  assert.deepEqual(demo.project.sections.map((section) => section.label), [
+    "Opening", "Groove A", "Dropout", "Hook A", "Break", "Groove A 2", "Build", "Final Hook", "Outro",
+  ]);
+  assert.match(demo.featuredCommand, /final hook/i);
+});
+
 test("175 BPM demo has nine validated 320 kbps stem assets and WAV-derived peaks", () => {
   const demo = demoProjectById("kimi-to-hashiru-made");
   assert.equal(demo.project.bpm, 175);
