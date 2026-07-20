@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyOperations, createLocalTransaction, sectionTrackState } from "../app/edit-transactions.ts";
+import { applyOperations, clearTrackEnabledAutomation, createLocalTransaction, sectionTrackState } from "../app/edit-transactions.ts";
 
 const track = (id, label) => ({ id, label, role: "test", color: "#fff", enabled: true, level: 1, audioUrl: "", peaksUrl: "", meanDb: -20, maxDb: -3 });
 const project = {
@@ -170,4 +170,20 @@ test("unmute commands never collapse into mute commands", () => {
   assert.equal(transaction.operations.length, 1);
   assert.equal(transaction.operations[0].action, "set_track_enabled");
   assert.equal(transaction.operations[0].afterEnabled, true);
+});
+
+test("manual track switches clear section enable overrides but keep gain automation", () => {
+  const automated = {
+    ...project,
+    automation: [
+      { sectionId: "chorus-1", trackId: "drums", enabled: true },
+      { sectionId: "chorus-2", trackId: "drums", enabled: false, level: 1.2 },
+      { sectionId: "chorus-2", trackId: "synth", enabled: false },
+    ],
+  };
+  clearTrackEnabledAutomation(automated, "drums");
+  assert.deepEqual(automated.automation, [
+    { sectionId: "chorus-2", trackId: "drums", enabled: undefined, level: 1.2 },
+    { sectionId: "chorus-2", trackId: "synth", enabled: false },
+  ]);
 });

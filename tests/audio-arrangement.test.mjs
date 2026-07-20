@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition } from "../app/audio-arrangement.ts";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition } from "../app/audio-arrangement.ts";
 
 const project = {
   version: 2,
@@ -63,4 +63,18 @@ test("overlapping sections are clipped so the scheduler never double-plays a ste
   const segments = createArrangementSegments(overlapping, 118);
   assert.equal(segments[0].lengthBars, 3);
   assert.equal(segments[0].destinationStartBar + segments[0].lengthBars, segments[1].destinationStartBar);
+});
+
+test("untouched contiguous arrangements use one continuous player per stem", () => {
+  const continuous = {
+    ...project,
+    totalBars: 12,
+    sections: [
+      { id: "intro", kind: "intro", label: "Intro", sourceStartBar: 0, startBar: 0, lengthBars: 4, energy: 0.3 },
+      { id: "verse", kind: "verse", label: "Verse", sourceStartBar: 4, startBar: 4, lengthBars: 8, energy: 0.6 },
+    ],
+  };
+  assert.equal(isContinuousArrangement(continuous), true);
+  assert.equal(isContinuousArrangement({ ...continuous, sections: continuous.sections.map((section) => section.id === "verse" ? { ...section, sourceStartBar: 8 } : section) }), false);
+  assert.equal(isContinuousArrangement({ ...continuous, sections: continuous.sections.map((section) => section.id === "verse" ? { ...section, startBar: 5 } : section) }), false);
 });

@@ -20,6 +20,19 @@ export function arrangementSignature(project: Project) {
     .join("|");
 }
 
+export function isContinuousArrangement(project: Project) {
+  if (project.totalBars <= 0 || project.sections.length === 0) return false;
+  const ordered = [...project.sections].sort((left, right) => left.startBar - right.startBar);
+  let cursor = 0;
+
+  for (const section of ordered) {
+    if (section.startBar !== cursor || sourceStartBar(section) !== section.startBar || section.lengthBars <= 0) return false;
+    cursor += section.lengthBars;
+  }
+
+  return cursor === project.totalBars;
+}
+
 export function isMixerOnlyTransition(
   audioReady: boolean,
   scheduledSignature: string,

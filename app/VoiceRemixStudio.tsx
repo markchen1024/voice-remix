@@ -3,11 +3,11 @@
 import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import * as Tone from "tone";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
+import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
 import { routeImmediateEditorCommand, type ImmediateEditorCommand } from "./editor-command-router";
 import { createEditorContext } from "./editor-context";
-import { applyOperations, cloneProject, createLocalTransaction, describeOperation, sectionTrackState, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
+import { applyOperations, clearTrackEnabledAutomation, cloneProject, createLocalTransaction, describeOperation, sectionTrackState, type EditTransaction, type Project, type TrackId } from "./edit-transactions";
 import { createProjectHistory, recordHistory, redoHistory, undoHistory } from "./project-history";
 import { createProjectExport, projectExportFilename } from "./project-export";
 import { audioExportFilename, renderProjectToWav } from "./audio-export";
@@ -34,7 +34,7 @@ function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
 }
 const DEMO_AUDIO_DURATION = INITIAL_DEMO.duration;
 const FEATURED_DEMO_COMMAND = INITIAL_DEMO.featuredCommand;
-type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId: string };
+type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId?: string };
 
 function CoverArt({ coverUrl, mini = false }: { coverUrl: string; mini?: boolean }) {
   return <div className={`cover-art${mini ? " mini-cover" : ""}`} style={{ "--cover-art": `url("${coverUrl}")` } as React.CSSProperties} aria-hidden="true" />;
@@ -295,6 +295,8 @@ export function VoiceRemixStudio() {
   const players = useRef<Partial<Record<TrackId, ScheduledPlayer[]>>>({});
   const buffers = useRef<Partial<Record<TrackId, Tone.ToneAudioBuffer>>>({});
   const scheduledArrangement = useRef("");
+  const continuousPlayback = useRef(false);
+  const activeMixerSection = useRef("");
   const proposedProject = useMemo(() => proposal ? applyOperations(project, proposal.operations) : null, [project, proposal]);
   const audibleProject = auditioningProposal && proposedProject ? proposedProject : project;
   const batchStemMappings = useMemo(() => mapStemFilenames(batchStemFiles.map((file) => file.name)), [batchStemFiles]);
@@ -321,6 +323,17 @@ export function VoiceRemixStudio() {
         const nextPosition = (transport.seconds / duration * totalBars) % totalBars;
         positionRef.current = nextPosition;
         setPosition(nextPosition);
+        if (continuousPlayback.current) {
+          const section = sectionAt(projectRef.current, Math.floor(nextPosition));
+          if (section && section.id !== activeMixerSection.current) {
+            activeMixerSection.current = section.id;
+            Object.values(players.current).flat().forEach((player) => {
+              player.sectionId = section.id;
+              player.mixGain = sectionEnergyGain(section.energy);
+            });
+            applyMixerState(projectRef.current);
+          }
+        }
       }
       frame = requestAnimationFrame(update);
     };
@@ -368,6 +381,8 @@ export function VoiceRemixStudio() {
       player.dispose();
     });
     players.current = {};
+    continuousPlayback.current = false;
+    activeMixerSection.current = "";
   }
 
   async function suspendMusicOutput() {
@@ -437,8 +452,21 @@ export function VoiceRemixStudio() {
     disposeArrangementPlayers();
 
     const segments = createArrangementSegments(nextProject, audioDurationRef.current);
+    const useContinuousPlayback = isContinuousArrangement(nextProject);
+    const currentSection = sectionAt(nextProject, Math.floor(positionRef.current)) ?? nextProject.sections[0];
     nextProject.tracks.forEach((track) => {
       const buffer = buffers.current[track.id]!;
+      if (useContinuousPlayback) {
+        const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination() as ScheduledPlayer;
+        player.sectionId = currentSection?.id;
+        player.mixGain = sectionEnergyGain(currentSection?.energy ?? 1);
+        player.volume.value = Tone.gainToDb(Math.max(0.001, track.level * player.mixGain));
+        player.mute = !track.enabled;
+        player.sync().start(0, 0, audioDurationRef.current);
+        players.current[track.id] = [player];
+        return;
+      }
+
       players.current[track.id] = segments.map((segment) => {
         const player = new Tone.Player({ url: buffer, fadeIn: 0.015, fadeOut: 0.015 }).toDestination() as ScheduledPlayer;
         const section = nextProject.sections.find((item) => item.id === segment.sectionId);
@@ -451,6 +479,8 @@ export function VoiceRemixStudio() {
       });
     });
 
+    continuousPlayback.current = useContinuousPlayback;
+    activeMixerSection.current = useContinuousPlayback ? currentSection?.id ?? "" : "";
     scheduledArrangement.current = signature;
   }
 
@@ -629,6 +659,7 @@ export function VoiceRemixStudio() {
     const next = cloneProject(projectRef.current);
     const track = next.tracks.find((item) => item.id === trackId)!;
     track.enabled = !track.enabled;
+    clearTrackEnabledAutomation(next, trackId);
     commit(next, track.enabled ? `Unmuted ${track.label}` : `Muted ${track.label}`, "Manual track edit");
   };
 

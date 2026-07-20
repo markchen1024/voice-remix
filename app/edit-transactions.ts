@@ -149,6 +149,14 @@ export function sectionTrackState(project: Project, sectionId: string, trackId: 
   };
 }
 
+export function clearTrackEnabledAutomation(project: Project, trackId: TrackId) {
+  project.automation = project.automation?.flatMap((automation) => {
+    if (automation.trackId !== trackId || automation.enabled === undefined) return [automation];
+    if (automation.level !== undefined) return [{ ...automation, enabled: undefined }];
+    return [];
+  });
+}
+
 function setSectionTrackAutomation(project: Project, sectionId: string, trackId: TrackId, value: { enabled?: boolean; level?: number }) {
   if (!project.sections.some((section) => section.id === sectionId)) throw new Error(`Unknown section: ${sectionId}`);
   const track = project.tracks.find((item) => item.id === trackId);
