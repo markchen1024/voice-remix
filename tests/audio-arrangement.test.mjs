@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition } from "../app/audio-arrangement.ts";
+import { arrangementSignature, barFromTimelinePointer, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition } from "../app/audio-arrangement.ts";
 
 const project = {
   version: 2,
@@ -77,4 +77,10 @@ test("untouched contiguous arrangements use one continuous player per stem", () 
   assert.equal(isContinuousArrangement(continuous), true);
   assert.equal(isContinuousArrangement({ ...continuous, sections: continuous.sections.map((section) => section.id === "verse" ? { ...section, sourceStartBar: 8 } : section) }), false);
   assert.equal(isContinuousArrangement({ ...continuous, sections: continuous.sections.map((section) => section.id === "verse" ? { ...section, startBar: 5 } : section) }), false);
+});
+
+test("timeline pointer positions map to seek bars after horizontal scrolling", () => {
+  assert.equal(barFromTimelinePointer(300, -100, 800, 80), 39.9995);
+  assert.equal(barFromTimelinePointer(-200, -100, 800, 80), 0);
+  assert.equal(barFromTimelinePointer(900, -100, 800, 80), 79.999);
 });

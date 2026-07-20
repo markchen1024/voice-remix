@@ -3,7 +3,7 @@
 import { FormEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import * as Tone from "tone";
-import { arrangementSignature, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
+import { arrangementSignature, barFromTimelinePointer, createArrangementSegments, findAuditionStartBar, isContinuousArrangement, isMixerOnlyTransition, sourceStartBar } from "./audio-arrangement";
 import { EMPTY_MIXER_STATUS, sectionEnergyGain, syncProjectMixer, type MixerStatus } from "./audio-mixer";
 import { routeImmediateEditorCommand, type ImmediateEditorCommand } from "./editor-command-router";
 import { createEditorContext } from "./editor-context";
@@ -437,6 +437,13 @@ export function VoiceRemixStudio() {
     const bounds = event.currentTarget.getBoundingClientRect();
     const ratio = (event.clientX - bounds.left) / bounds.width;
     scrubToBar(ratio * (projectRef.current.totalBars - 0.001));
+  }
+
+  function scrubTimelineFromPointer(event: ReactPointerEvent<HTMLElement>, useParent = false) {
+    const timeline = useParent ? event.currentTarget.parentElement : event.currentTarget;
+    if (!timeline) return;
+    const bounds = timeline.getBoundingClientRect();
+    scrubToBar(barFromTimelinePointer(event.clientX, bounds.left, bounds.width, projectRef.current.totalBars));
   }
 
   function auditionStartBar(nextProposal: EditTransaction) {
@@ -1570,7 +1577,13 @@ export function VoiceRemixStudio() {
               </div>
               <div className="playlist-scroll" ref={timelineScroll} data-active-section={active?.id ?? ""}>
                 <div className="track-label-spacer"><span>STEMS</span></div>
-                <div className="bar-ruler" style={{ width: project.totalBars * BAR_PX }}>
+                <div
+                  className="bar-ruler"
+                  style={{ width: project.totalBars * BAR_PX }}
+                  title="Click or drag to seek"
+                  onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); scrubTimelineFromPointer(event); }}
+                  onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubTimelineFromPointer(event); }}
+                >
                   {barLabels.map((bar) => <span key={bar} style={{ width: BAR_PX }}>{bar}</span>)}
                 </div>
                 {project.tracks.map((track) => {
@@ -1611,7 +1624,13 @@ export function VoiceRemixStudio() {
                       })}
                       {!auditioningProposal && proposedSectionChanges.map((section) => <div className="ghost-clip" key={`${track.id}-${section.id}-ghost`} style={{ left: section.startBar * BAR_PX + 3, width: Math.max(BAR_PX / 2, section.lengthBars * BAR_PX - 6) }}><span>PROPOSED · {section.label}</span></div>)}
                       {liveQueue && <div className="live-cue-line" style={{ left: liveQueue.executeAtBar * BAR_PX }}>{track.id === project.tracks[0].id && <span>NEXT BAR</span>}</div>}
-                      <div className="playhead" style={{ left: position * BAR_PX }}><span /></div>
+                      <div
+                        className="playhead"
+                        style={{ left: position * BAR_PX }}
+                        title="Drag to seek"
+                        onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId); scrubTimelineFromPointer(event, true); }}
+                        onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) scrubTimelineFromPointer(event, true); }}
+                      ><span /></div>
                     </div>
                   </div>
                   );

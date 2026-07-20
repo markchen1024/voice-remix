@@ -33,6 +33,12 @@ export function isContinuousArrangement(project: Project) {
   return cursor === project.totalBars;
 }
 
+export function barFromTimelinePointer(clientX: number, timelineLeft: number, timelineWidth: number, totalBars: number) {
+  if (timelineWidth <= 0 || totalBars <= 0) return 0;
+  const ratio = Math.max(0, Math.min(1, (clientX - timelineLeft) / timelineWidth));
+  return ratio * Math.max(0, totalBars - 0.001);
+}
+
 export function isMixerOnlyTransition(
   audioReady: boolean,
   scheduledSignature: string,
