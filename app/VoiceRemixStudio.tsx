@@ -34,6 +34,10 @@ function realtimeEditorCommand(action: unknown): ImmediateEditorCommand | null {
 }
 const DEMO_AUDIO_DURATION = INITIAL_DEMO.duration;
 const FEATURED_DEMO_COMMAND = INITIAL_DEMO.featuredCommand;
+// Tone stores Transport events as musical ticks. Keep the audio timeline at a
+// fixed tempo so absolute stem seconds cannot be rescaled when projects with
+// different musical BPM values are switched.
+const AUDIO_TRANSPORT_BPM = 60;
 type ScheduledPlayer = Tone.Player & { mixGain: number; sectionId?: string };
 
 function CoverArt({ coverUrl, mini = false }: { coverUrl: string; mini?: boolean }) {
@@ -308,7 +312,6 @@ export function VoiceRemixStudio() {
 
   useEffect(() => {
     projectRef.current = project;
-    Tone.getTransport().bpm.rampTo(project.bpm, 0.08);
   }, [project]);
 
   useEffect(() => {
@@ -540,7 +543,9 @@ export function VoiceRemixStudio() {
         // latest project state so the first audible frame already reflects them.
         const audioProject = projectRef.current;
         const transport = Tone.getTransport();
+        transport.bpm.value = AUDIO_TRANSPORT_BPM;
         transport.loop = true;
+        transport.loopStart = 0;
         transport.loopEnd = audioDurationRef.current;
         scheduleAudioArrangement(audioProject, true);
         applyMixerState(audioProject);
